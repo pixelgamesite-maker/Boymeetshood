@@ -1,7 +1,7 @@
 # BoyMeetsH00d
 
 **NFT-Collateralized Lending & Borrowing Platform**
-Platform Specification & Functional Overview — v1.0 (Single Collection)
+Platform Specification & Functional Overview v1.0 (Single Collection)
 
 ## 1. Executive Summary
 
