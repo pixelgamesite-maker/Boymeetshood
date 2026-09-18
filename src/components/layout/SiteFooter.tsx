@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import { Link } from "wouter";
 
 const X_URL = "https://x.com/boymeetshood";
@@ -87,8 +88,8 @@ function FooterCol({
                   rel="noopener noreferrer"
                   className="text-[14px] transition-colors"
                   style={{ color: "var(--fg-dim)" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
-                  onMouseLeave={(e) =>
+                  onMouseEnter={(e: MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.color = "#fff")}
+                  onMouseLeave={(e: MouseEvent<HTMLAnchorElement>) =>
                     (e.currentTarget.style.color = "var(--fg-dim)")
                   }
                 >
@@ -99,8 +100,8 @@ function FooterCol({
                   href={href}
                   className="text-[14px] transition-colors"
                   style={{ color: "var(--fg-dim)" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
-                  onMouseLeave={(e) =>
+                  onMouseEnter={(e: MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.color = "#fff")}
+                  onMouseLeave={(e: MouseEvent<HTMLAnchorElement>) =>
                     (e.currentTarget.style.color = "var(--fg-dim)")
                   }
                 >
