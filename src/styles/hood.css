@@ -1,34 +1,34 @@
 /* ==========================================================================
-   BoyMeetsHood — theme tokens
+   BoyMeetsHood — theme
    Import once, in main.tsx:   import "@/styles/hood.css";
    ========================================================================== */
 
-/* Fonts are loaded in index.html <head> — a <link> there starts the download
-   immediately, where an @import here would wait for this stylesheet to parse. */
-
 :root {
-  /* Surfaces — deep indigo night, not near-black */
-  --ink: #0e0a28;
-  --ink-2: #171142;
-  --ink-3: #221a5c;
-  --hairline: rgba(255, 255, 255, 0.09);
-
-  /* Accents */
+  /* Brand — lime is the collection, not an accent */
   --lime: #c9f73d;
   --lime-deep: #a8d61f;
+  --lime-glow: #dcff6b;
+
+  /* Surfaces */
+  --ink: #0b0818;
+  --ink-2: #14102e;
+  --ink-3: #1e1746;
+  --hairline: rgba(255, 255, 255, 0.1);
+
+  /* Cartoon accents, pulled from the collection art */
   --punch: #ff3d71;
   --sky: #45d6f5;
-  --violet: #6b4bff;
+  --violet: #7b5cff;
+  --sun: #ffc83d;
 
   /* Paper — the loan ticket */
   --paper: #f6f1e4;
   --paper-line: #d8cfb8;
   --paper-ink: #1a1530;
 
-  /* Text */
   --fg: #ffffff;
-  --fg-dim: rgba(255, 255, 255, 0.62);
-  --fg-faint: rgba(255, 255, 255, 0.38);
+  --fg-dim: rgba(255, 255, 255, 0.64);
+  --fg-faint: rgba(255, 255, 255, 0.4);
 
   --display: "Gabarito", "Segoe UI", system-ui, sans-serif;
   --mono: "Space Mono", ui-monospace, "SFMono-Regular", monospace;
@@ -43,106 +43,181 @@ body {
   background: var(--ink);
   color: var(--fg);
   font-family: var(--display);
-  font-weight: 400;
   margin: 0;
 }
 
-/* Visible keyboard focus everywhere, without the permanent mouse ring */
 :focus-visible {
   outline: 3px solid var(--lime);
   outline-offset: 3px;
   border-radius: 4px;
 }
 
-/* --- Wordmark: chromatic offset, lifted from the current site ------------ */
-.hood-wordmark {
+/* ── Wordmark + glitch ─────────────────────────────────────────────────────
+   Set data-text to the same string as the element's text content. The two
+   pseudo-elements are the red and cyan channels, kicked apart on a stutter. */
+
+.wordmark {
   font-family: var(--display);
   font-weight: 900;
-  letter-spacing: -0.03em;
-  color: #fff;
-  text-shadow:
-    -0.055em 0 0 var(--sky),
-    0.055em 0 0 var(--punch);
+  letter-spacing: -0.035em;
+  position: relative;
+  display: inline-block;
 }
 
-/* --- The ticket: notched edge + perforation ------------------------------ */
+/* On a lime background the wordmark is black with colour fringing */
+.wordmark--dark {
+  color: #0b0818;
+  text-shadow: -0.035em 0 0 var(--punch), 0.035em 0 0 var(--sky);
+}
+
+/* On a dark background it's white with the same fringing */
+.wordmark--light {
+  color: #fff;
+  text-shadow: -0.035em 0 0 var(--punch), 0.035em 0 0 var(--sky);
+}
+
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  clip-path: inset(0 0 100% 0);
+}
+.glitch::before {
+  color: var(--punch);
+  transform: translateX(-0.05em);
+  animation: glitch-a 3.4s steps(1) infinite;
+}
+.glitch::after {
+  color: var(--sky);
+  transform: translateX(0.05em);
+  animation: glitch-b 3.4s steps(1) infinite;
+}
+
+@keyframes glitch-a {
+  0%, 88%, 100% { clip-path: inset(0 0 100% 0); }
+  89% { clip-path: inset(12% 0 62% 0); transform: translateX(-0.09em); }
+  91% { clip-path: inset(48% 0 26% 0); transform: translateX(0.06em); }
+  93% { clip-path: inset(70% 0 8% 0); transform: translateX(-0.05em); }
+  95% { clip-path: inset(0 0 100% 0); }
+}
+@keyframes glitch-b {
+  0%, 88%, 100% { clip-path: inset(0 0 100% 0); }
+  90% { clip-path: inset(30% 0 44% 0); transform: translateX(0.09em); }
+  92% { clip-path: inset(62% 0 18% 0); transform: translateX(-0.07em); }
+  94% { clip-path: inset(6% 0 78% 0); transform: translateX(0.05em); }
+  96% { clip-path: inset(0 0 100% 0); }
+}
+
+/* ── Boot splash ──────────────────────────────────────────────────────────*/
+
+@keyframes boot-out {
+  to { opacity: 0; visibility: hidden; }
+}
+@keyframes boot-logo {
+  from { opacity: 0; transform: scale(0.82); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes boot-scan {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(100%); }
+}
+@keyframes blink {
+  50% { opacity: 0.25; }
+}
+
+/* ── Page entrance: one sequence, hero only ───────────────────────────────*/
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes ticket-drop {
+  from { opacity: 0; transform: translateY(-22px) rotate(-6deg); }
+  to { opacity: 1; transform: translateY(0) rotate(-2.2deg); }
+}
+.ticket-drop { animation: ticket-drop 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both; }
+
+/* ── Ticket paper ─────────────────────────────────────────────────────────*/
+
 .ticket-notch {
-  /* Two half-circles bitten out of the left and right edges */
   -webkit-mask-image:
-    radial-gradient(circle 13px at 0 var(--notch-y, 62%), transparent 98%, #000 100%),
-    radial-gradient(circle 13px at 100% var(--notch-y, 62%), transparent 98%, #000 100%);
+    radial-gradient(circle 13px at 0 var(--notch-y, 58%), transparent 98%, #000 100%),
+    radial-gradient(circle 13px at 100% var(--notch-y, 58%), transparent 98%, #000 100%);
   -webkit-mask-composite: source-in;
   mask-image:
-    radial-gradient(circle 13px at 0 var(--notch-y, 62%), transparent 98%, #000 100%),
-    radial-gradient(circle 13px at 100% var(--notch-y, 62%), transparent 98%, #000 100%);
+    radial-gradient(circle 13px at 0 var(--notch-y, 58%), transparent 98%, #000 100%),
+    radial-gradient(circle 13px at 100% var(--notch-y, 58%), transparent 98%, #000 100%);
   mask-composite: intersect;
 }
 
 .perforation {
-  background-image: linear-gradient(
-    90deg,
-    var(--paper-line) 0 6px,
-    transparent 6px 12px
-  );
+  background-image: linear-gradient(90deg, var(--paper-line) 0 6px, transparent 6px 12px);
   background-size: 12px 2px;
   background-repeat: repeat-x;
 }
 
-/* --- Starfield -----------------------------------------------------------*/
-.starfield {
-  background-image:
-    radial-gradient(1.5px 1.5px at 12% 22%, rgba(255, 255, 255, 0.55), transparent),
-    radial-gradient(1px 1px at 78% 14%, rgba(255, 255, 255, 0.4), transparent),
-    radial-gradient(1.5px 1.5px at 62% 68%, rgba(255, 255, 255, 0.35), transparent),
-    radial-gradient(1px 1px at 33% 81%, rgba(255, 255, 255, 0.45), transparent),
-    radial-gradient(1px 1px at 88% 52%, rgba(255, 255, 255, 0.3), transparent),
-    radial-gradient(1.5px 1.5px at 48% 33%, rgba(255, 255, 255, 0.28), transparent),
-    radial-gradient(1px 1px at 5% 60%, rgba(255, 255, 255, 0.35), transparent);
-}
+/* ── Toolkit cards ────────────────────────────────────────────────────────*/
 
-/* --- One orchestrated page-load sequence, hero only ----------------------- */
-@keyframes hood-rise {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.tool-card {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 24px;
+  isolation: isolate;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
+.tool-card:hover { transform: translateY(-4px); }
+.tool-card img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -2;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.tool-card:hover img { transform: scale(1.06); }
+.tool-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    to top,
+    rgba(11, 8, 24, 0.94) 6%,
+    rgba(11, 8, 24, 0.62) 44%,
+    rgba(11, 8, 24, 0.18) 100%
+  );
+}
+.tool-card--soon img { filter: grayscale(0.7) brightness(0.55); }
 
-@keyframes ticket-drop {
-  from {
-    opacity: 0;
-    transform: translateY(-22px) rotate(-6deg);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) rotate(-2.2deg);
-  }
-}
+/* ── Scanlines, for depth over flat art ───────────────────────────────────*/
 
-.rise {
-  animation: hood-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.ticket-drop {
-  animation: ticket-drop 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.25s both;
+.scanlines::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.03) 0 1px,
+    transparent 1px 3px
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-  .rise,
-  .ticket-drop {
+  html { scroll-behavior: auto; }
+  .glitch::before,
+  .glitch::after { animation: none; clip-path: inset(0 0 100% 0); }
+  .rise, .ticket-drop {
     animation: none !important;
     opacity: 1 !important;
-    transform: rotate(-2.2deg);
   }
-  *,
-  *::before,
-  *::after {
-    transition-duration: 0.01ms !important;
-  }
+  .ticket-drop { transform: rotate(-2.2deg); }
+  .tool-card, .tool-card img { transition: none; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; }
 }
