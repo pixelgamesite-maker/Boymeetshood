@@ -1,5 +1,4 @@
 import { Router as WouterRouter, Route, Switch, Link } from "wouter";
-import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/home";
 import Market from "@/pages/market";
@@ -50,7 +49,6 @@ function App() {
             <Route component={NotFound} />
           </Switch>
         </WouterRouter>
-        <Toaster />
       </TooltipProvider>
     </div>
   );
