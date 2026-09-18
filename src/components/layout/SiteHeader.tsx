@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { Link, useLocation } from "wouter";
 
 const NAV: [string, string][] = [
@@ -58,8 +58,8 @@ export default function SiteHeader() {
               href={href}
               className="rounded-full px-4 py-2 text-[14px] font-medium transition-colors"
               style={{ color: "var(--fg-dim)" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
-              onMouseLeave={(e) =>
+              onMouseEnter={(e: MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.color = "#fff")}
+              onMouseLeave={(e: MouseEvent<HTMLAnchorElement>) =>
                 (e.currentTarget.style.color = "var(--fg-dim)")
               }
             >
