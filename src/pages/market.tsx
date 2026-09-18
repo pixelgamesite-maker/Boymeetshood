@@ -36,7 +36,7 @@ export default function Market() {
             className="m-0 font-black leading-[1.02]"
             style={{ fontSize: "clamp(2rem, 5vw, 2.9rem)", letterSpacing: "-0.02em" }}
           >
-            Market
+            P2P Lending
           </h1>
 
           <div
