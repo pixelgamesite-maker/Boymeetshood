@@ -1,7 +1,43 @@
-import { Router as WouterRouter, Route, Switch } from "wouter";
+import { Router as WouterRouter, Route, Switch, Link } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/home";
+import Market from "@/pages/market";
+
+function NotFound() {
+  return (
+    <div
+      className="flex min-h-screen flex-col items-center justify-center px-6 text-center"
+      style={{ background: "var(--ink)" }}
+    >
+      <p
+        className="m-0 text-[13px]"
+        style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)" }}
+      >
+        404
+      </p>
+      <h1
+        className="m-0 mt-4 font-black leading-[1.02]"
+        style={{ fontSize: "clamp(2rem, 6vw, 3rem)", letterSpacing: "-0.02em" }}
+      >
+        This one isn't in the Hood.
+      </h1>
+      <p
+        className="m-0 mt-4 max-w-[40ch] text-[16px] leading-relaxed"
+        style={{ color: "var(--fg-dim)" }}
+      >
+        The page you're after doesn't exist. Head back and start from the top.
+      </p>
+      <Link
+        href="/"
+        className="mt-8 inline-flex items-center rounded-full px-7 py-3.5 text-[14.5px] font-extrabold"
+        style={{ background: "var(--lime)", color: "var(--ink)" }}
+      >
+        Back to home
+      </Link>
+    </div>
+  );
+}
 
 function App() {
   return (
@@ -10,24 +46,8 @@ function App() {
         <WouterRouter>
           <Switch>
             <Route path="/" component={Home} />
-            <Route>
-              <div
-                style={{
-                  background: "#050504",
-                  width: "100vw",
-                  height: "100vh",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontFamily: "'Cormorant Garamond', Georgia, serif",
-                  fontWeight: 700,
-                  fontSize: "2rem",
-                  color: "#c9a84c",
-                }}
-              >
-                404 — NOT FOUND
-              </div>
-            </Route>
+            <Route path="/market" component={Market} />
+            <Route component={NotFound} />
           </Switch>
         </WouterRouter>
         <Toaster />
