@@ -1,7 +1,10 @@
 import { Router as WouterRouter, Route, Switch, Link } from "wouter";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import BootSplash from "@/components/BootSplash";
 import Home from "@/pages/home";
 import Market from "@/pages/market";
+import About from "@/pages/about";
+import ComingSoon from "@/pages/coming-soon";
 
 function NotFound() {
   return (
@@ -9,15 +12,16 @@ function NotFound() {
       className="flex min-h-screen flex-col items-center justify-center px-6 text-center"
       style={{ background: "var(--ink)" }}
     >
+      <img src="/logo.png" alt="" width={72} height={72} className="rounded-[20px]" />
       <p
-        className="m-0 text-[13px]"
-        style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)" }}
+        className="m-0 mt-6 text-[12px] uppercase"
+        style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)", letterSpacing: "0.3em" }}
       >
         404
       </p>
       <h1
         className="m-0 mt-4 font-black leading-[1.02]"
-        style={{ fontSize: "clamp(2rem, 6vw, 3rem)", letterSpacing: "-0.02em" }}
+        style={{ fontSize: "clamp(2rem, 6vw, 3rem)", letterSpacing: "-0.025em" }}
       >
         This one isn't in the Hood.
       </h1>
@@ -29,7 +33,7 @@ function NotFound() {
       </p>
       <Link
         href="/"
-        className="mt-8 inline-flex items-center rounded-full px-7 py-3.5 text-[14.5px] font-extrabold"
+        className="mt-8 inline-flex items-center rounded-full px-8 py-3.5 text-[14.5px] font-extrabold"
         style={{ background: "var(--lime)", color: "var(--ink)" }}
       >
         Back to home
@@ -42,10 +46,15 @@ function App() {
   return (
     <div className="dark">
       <TooltipProvider>
+        <BootSplash />
         <WouterRouter>
           <Switch>
             <Route path="/" component={Home} />
-            <Route path="/market" component={Market} />
+            <Route path="/p2p" component={Market} />
+            <Route path="/about" component={About} />
+            <Route path="/pool" component={ComingSoon} />
+            <Route path="/treasury" component={ComingSoon} />
+            <Route path="/automint" component={ComingSoon} />
             <Route component={NotFound} />
           </Switch>
         </WouterRouter>
