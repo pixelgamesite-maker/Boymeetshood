@@ -1,43 +1,56 @@
-import type { MouseEvent } from "react";
 import { Link } from "wouter";
-
-const X_URL = "https://x.com/boymeetshood";
+import { COLLECTION, LINKS, TOOLS } from "@/lib/site";
 
 export default function SiteFooter() {
   return (
     <footer
       className="px-5 pb-14 pt-16 sm:px-8"
-      style={{ borderTop: "1px solid var(--hairline)" }}
+      style={{ borderTop: "1px solid var(--hairline)", background: "var(--ink)" }}
     >
       <div className="mx-auto max-w-[1180px]">
-        <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
-          <div className="max-w-[340px]">
-            <span className="hood-wordmark text-[26px] leading-none">
-              BoyMeetsHood
-            </span>
+        <div className="flex flex-col gap-12 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-[360px]">
+            <div className="flex items-center gap-3">
+              <img
+                src="/logo.png"
+                alt=""
+                width={40}
+                height={40}
+                className="h-10 w-10 rounded-[12px]"
+              />
+              <span className="wordmark wordmark--light text-[22px] leading-none">
+                BoyMeetsHood
+              </span>
+            </div>
             <p
-              className="mt-4 text-[15px] leading-relaxed"
+              className="mt-5 text-[15px] leading-relaxed"
               style={{ color: "var(--fg-dim)" }}
             >
-              Borrow USDG against your Boy without selling it. 2,666 Boys on
-              Robinhood Chain.
+              {COLLECTION.tagline}
             </p>
+            <a
+              href={LINKS.opensea}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-6 inline-flex items-center rounded-full px-6 py-3 text-[14px] font-extrabold"
+              style={{ background: "var(--lime)", color: "var(--ink)" }}
+            >
+              Join the Boys
+            </a>
           </div>
 
           <div className="flex gap-14 sm:gap-20">
-            <FooterCol
-              heading="Protocol"
-              links={[
-                ["Market", "/market"],
-                ["How it works", "/#how"],
-                ["FAQ", "/#faq"],
-              ]}
+            <Col
+              heading="The Hood"
+              links={TOOLS.map((t) => [t.name, t.href] as [string, string])}
             />
-            <FooterCol
-              heading="Collection"
+            <Col
+              heading="More"
               links={[
-                ["X", X_URL],
-                ["Toolkit", "/#toolkit"],
+                ["About", "/about"],
+                ["FAQ", "/about#faq"],
+                ["OpenSea", LINKS.opensea],
+                ["X", LINKS.x],
               ]}
             />
           </div>
@@ -48,14 +61,14 @@ export default function SiteFooter() {
           style={{ borderTop: "1px solid var(--hairline)" }}
         >
           <p
-            className="max-w-[560px] text-[12.5px] leading-relaxed"
+            className="m-0 max-w-[560px] text-[12.5px] leading-relaxed"
             style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)" }}
           >
             Lending against NFT collateral carries risk of total loss. Nothing
             here is financial advice.
           </p>
           <p
-            className="text-[12.5px]"
+            className="m-0 text-[12.5px]"
             style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)" }}
           >
             © {new Date().getFullYear()} BoyMeetsHood
@@ -66,51 +79,30 @@ export default function SiteFooter() {
   );
 }
 
-function FooterCol({
-  heading,
-  links,
-}: {
-  heading: string;
-  links: [string, string][];
-}) {
+function Col({ heading, links }: { heading: string; links: [string, string][] }) {
   return (
     <div>
       <p className="mb-4 text-[14px] font-bold text-white">{heading}</p>
-      <ul className="flex flex-col gap-2.5">
-        {links.map(([label, href]) => {
-          const external = href.startsWith("http");
-          return (
-            <li key={label}>
-              {external ? (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[14px] transition-colors"
-                  style={{ color: "var(--fg-dim)" }}
-                  onMouseEnter={(e: MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.color = "#fff")}
-                  onMouseLeave={(e: MouseEvent<HTMLAnchorElement>) =>
-                    (e.currentTarget.style.color = "var(--fg-dim)")
-                  }
-                >
-                  {label}
-                </a>
-              ) : (
-                <Link
-                  href={href}
-                  className="text-[14px] transition-colors"
-                  style={{ color: "var(--fg-dim)" }}
-                  onMouseEnter={(e: MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.color = "#fff")}
-                  onMouseLeave={(e: MouseEvent<HTMLAnchorElement>) =>
-                    (e.currentTarget.style.color = "var(--fg-dim)")
-                  }
-                >
-                  {label}
-                </Link>
-              )}
-            </li>
-          );
-        })}
+      <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
+        {links.map(([label, href]) => (
+          <li key={label}>
+            {href.startsWith("http") ? (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[14px]"
+                style={{ color: "var(--fg-dim)" }}
+              >
+                {label}
+              </a>
+            ) : (
+              <Link href={href} className="text-[14px]" style={{ color: "var(--fg-dim)" }}>
+                {label}
+              </Link>
+            )}
+          </li>
+        ))}
       </ul>
     </div>
   );
