@@ -1,95 +1,8 @@
-import { useState, type CSSProperties, type MouseEvent } from "react";
+import { useState, type CSSProperties } from "react";
 import { Link } from "wouter";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
-
-/* ──────────────────────────────────────────────────────────────────────────
-   Content
-   ────────────────────────────────────────────────────────────────────────── */
-
-const FACTS: [string, string][] = [
-  ["Supply", "2,666 Boys"],
-  ["Settles in", "USDG"],
-  ["Network", "Robinhood Chain"],
-  ["Model", "Peer-to-peer"],
-];
-
-const STEPS: { title: string; body: string }[] = [
-  {
-    title: "A lender posts an offer",
-    body: "They set the amount, the interest, how long you get, and which Boys they will take as collateral. The offer sits on the market until someone takes it.",
-  },
-  {
-    title: "You take the offer that suits you",
-    body: "No haggling, no waiting to be matched. Pick a live offer, and your Boy moves into escrow as the USDG lands in your wallet.",
-  },
-  {
-    title: "You repay before the deadline",
-    body: "Principal plus interest, in USDG. The contract releases your Boy back to you the moment it clears — the lender does not have to approve anything.",
-  },
-  {
-    title: "Or you miss it, and the Boy is theirs",
-    body: "The deadline is hard. No auction, no grace period, no extension. The lender priced that risk into the offer you accepted.",
-  },
-];
-
-const FAQS: { q: string; a: string }[] = [
-  {
-    q: "Do I have to sell my Boy to get liquidity?",
-    a: "No. That is the whole point. Your Boy sits in escrow for the length of the loan and comes straight back to your wallet when you repay.",
-  },
-  {
-    q: "Can I use my Boy while the loan is active?",
-    a: "No. Collateral is locked in the contract for the full term. You get it back on repayment, or you lose it on default.",
-  },
-  {
-    q: "What happens the second I miss the deadline?",
-    a: "The Boy transfers to your lender. There is no grace period and no partial repayment — treat the deadline as final when you accept an offer.",
-  },
-  {
-    q: "Who decides the interest rate?",
-    a: "Lenders do. Each writes their own offer, and competing offers are what move rates. The protocol does not set a house rate.",
-  },
-  {
-    q: "Why USDG instead of the chain's native token?",
-    a: "A loan denominated in a volatile asset can blow up on both sides before the term is even up. USDG keeps what you borrow and what you owe the same number.",
-  },
-  {
-    q: "Will other collections be supported?",
-    a: "Not at launch. The contracts take the collection address as a parameter, so adding one later is a deployment rather than a rewrite.",
-  },
-];
-
-const TOOLKIT: { name: string; body: string; tint: string; live: boolean }[] = [
-  {
-    name: "Hood Credit",
-    body: "Borrow against your Boy without selling it. Peer-to-peer offers, settled in USDG.",
-    tint: "var(--lime)",
-    live: true,
-  },
-  {
-    name: "Hood AutoMint",
-    body: "Non-custodial minting terminal. Free for holders. Less clicking, less panic.",
-    tint: "var(--sky)",
-    live: false,
-  },
-  {
-    name: "Hood Treasury",
-    body: "Protocol revenue routed by contract, verifiable on-chain.",
-    tint: "var(--punch)",
-    live: false,
-  },
-  {
-    name: "JUICE",
-    body: "The Hood needs a scoreboard. Earn it by actually using the protocol.",
-    tint: "var(--violet)",
-    live: false,
-  },
-];
-
-/* ──────────────────────────────────────────────────────────────────────────
-   Page
-   ────────────────────────────────────────────────────────────────────────── */
+import { COLLECTION, LINKS, TOOLS, type Tool } from "@/lib/site";
 
 export default function Home() {
   return (
@@ -97,89 +10,264 @@ export default function Home() {
       <SiteHeader />
       <main>
         <Hero />
-        <Facts />
-        <HowItWorks />
-        <Scope />
         <Toolkit />
-        <Faq />
+        <HowItWorks />
+        <TheBoys />
+        <JoinBand />
       </main>
       <SiteFooter />
     </div>
   );
 }
 
-/* ── Hero ─────────────────────────────────────────────────────────────────*/
+/* ── Hero: the brand, full bleed ──────────────────────────────────────────*/
 
 function Hero() {
   return (
-    <section className="relative overflow-hidden px-5 pb-20 pt-[120px] sm:px-8 sm:pt-[150px]">
-      {/* Night sky */}
-      <div
-        className="starfield pointer-events-none absolute inset-0"
-        aria-hidden="true"
-        style={{
-          background: `radial-gradient(1100px 620px at 78% 8%, rgba(107,75,255,0.30), transparent 62%),
-                       radial-gradient(760px 480px at 10% 32%, rgba(69,214,245,0.16), transparent 66%)`,
-        }}
-      />
-      <div className="starfield pointer-events-none absolute inset-0" aria-hidden="true" />
+    <section
+      className="scanlines relative overflow-hidden px-5 pb-16 pt-[120px] sm:px-8 sm:pb-20 sm:pt-[150px]"
+      style={{ background: "var(--lime)" }}
+    >
+      <div className="relative mx-auto flex max-w-[1180px] flex-col items-center text-center">
+        <img
+          src="/logo.png"
+          alt=""
+          width={112}
+          height={112}
+          className="rise h-24 w-24 rounded-[26px] sm:h-28 sm:w-28"
+          style={{ boxShadow: "0 24px 60px rgba(11,8,24,0.26)" }}
+        />
 
-      <div className="relative mx-auto grid max-w-[1180px] items-center gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10">
-        <div>
-          <h1
-            className="rise hood-wordmark"
+        <h1
+          className="wordmark wordmark--dark glitch rise m-0 mt-8"
+          data-text="BoyMeetsHood"
+          style={{
+            fontSize: "clamp(2.6rem, 11vw, 6.2rem)",
+            lineHeight: 0.95,
+            animationDelay: "0.08s",
+          }}
+        >
+          BoyMeetsHood
+        </h1>
+
+        <p
+          className="rise m-0 mt-6 max-w-[34ch] text-[17px] font-semibold leading-snug sm:text-[21px]"
+          style={{ color: "rgba(11,8,24,0.78)", animationDelay: "0.16s" }}
+        >
+          {COLLECTION.supply} Boys. One Hood.
+          <br />
+          Real financial utility.
+        </p>
+
+        <div
+          className="rise mt-9 flex flex-col gap-3 sm:flex-row"
+          style={{ animationDelay: "0.24s" }}
+        >
+          <Link
+            href="/p2p"
+            className="inline-flex items-center justify-center rounded-full px-9 py-4 text-[15px] font-extrabold"
+            style={{ background: "var(--ink)", color: "var(--lime)" }}
+          >
+            Enter the Hood
+          </Link>
+          <a
+            href={LINKS.opensea}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-full px-9 py-4 text-[15px] font-extrabold"
             style={{
-              fontSize: "clamp(2.9rem, 8.5vw, 5.1rem)",
-              lineHeight: 0.94,
-              margin: 0,
+              border: "2px solid rgba(11,8,24,0.28)",
+              color: "var(--ink)",
             }}
           >
-            Borrow against
-            <br />
-            your Boy.
-            <br />
-            Keep your Boy.
-          </h1>
+            Join the Boys
+          </a>
+        </div>
 
+        <dl
+          className="rise mt-14 grid w-full max-w-[720px] grid-cols-2 gap-px overflow-hidden rounded-[20px] sm:grid-cols-4"
+          style={{ background: "rgba(11,8,24,0.16)", animationDelay: "0.32s" }}
+        >
+          {(
+            [
+              ["Supply", COLLECTION.supply],
+              ["Chain", COLLECTION.chain],
+              ["Settles in", COLLECTION.currency],
+              ["Lending", "Live"],
+            ] as [string, string][]
+          ).map(([label, value]) => (
+            <div key={label} className="px-4 py-5" style={{ background: "var(--lime)" }}>
+              <dt
+                className="m-0 text-[11px] uppercase"
+                style={{
+                  fontFamily: "var(--mono)",
+                  letterSpacing: "0.14em",
+                  color: "rgba(11,8,24,0.5)",
+                }}
+              >
+                {label}
+              </dt>
+              <dd
+                className="m-0 mt-1.5 text-[16px] font-extrabold"
+                style={{ color: "var(--ink)" }}
+              >
+                {value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
+  );
+}
+
+/* ── Toolkit: the four doors ──────────────────────────────────────────────*/
+
+function Toolkit() {
+  return (
+    <section className="px-5 py-24 sm:px-8">
+      <div className="mx-auto max-w-[1180px]">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <h2
+            className="m-0 font-black leading-[1]"
+            style={{ fontSize: "clamp(2.1rem, 5.5vw, 3.4rem)", letterSpacing: "-0.025em" }}
+          >
+            The Hood Toolkit
+          </h2>
           <p
-            className="rise mt-7 max-w-[46ch] text-[17px] leading-relaxed sm:text-[18px]"
-            style={{ color: "var(--fg-dim)", animationDelay: "0.1s" }}
+            className="m-0 text-[13px] uppercase"
+            style={{
+              fontFamily: "var(--mono)",
+              letterSpacing: "0.18em",
+              color: "var(--fg-faint)",
+            }}
           >
-            Lock your NFT in escrow, take USDG today, and pay it back before the
-            clock runs out. Repay and it comes home. Miss the deadline and your
-            lender keeps it.
+            Everything ships after mint
           </p>
+        </div>
 
-          <div
-            className="rise mt-9 flex flex-col gap-3 sm:flex-row"
-            style={{ animationDelay: "0.18s" }}
+        <div className="mt-10 grid gap-4 sm:grid-cols-2">
+          {TOOLS.map((tool, i) => (
+            <ToolCard key={tool.name} tool={tool} feature={i === 0} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ToolCard({ tool, feature }: { tool: Tool; feature: boolean }) {
+  const inner = (
+    <>
+      <img src={tool.image} alt="" loading="lazy" />
+      <div className="relative flex h-full flex-col justify-end p-6 sm:p-8">
+        <span
+          className="mb-auto self-start rounded-full px-3 py-1.5 text-[11px] font-extrabold uppercase"
+          style={{
+            fontFamily: "var(--mono)",
+            letterSpacing: "0.1em",
+            background: tool.live ? tool.tint : "rgba(255,255,255,0.14)",
+            color: tool.live ? "var(--ink)" : "#fff",
+          }}
+        >
+          {tool.live ? "Live" : "Coming soon"}
+        </span>
+
+        <h3
+          className="m-0 mt-8 font-black leading-[1]"
+          style={{
+            fontSize: feature ? "clamp(2rem, 4.6vw, 2.9rem)" : "clamp(1.7rem, 3.6vw, 2.2rem)",
+            letterSpacing: "-0.02em",
+            color: tool.live ? tool.tint : "#fff",
+          }}
+        >
+          {tool.name}
+        </h3>
+        <p
+          className="m-0 mt-2.5 max-w-[42ch] text-[14.5px] leading-relaxed"
+          style={{ color: "rgba(255,255,255,0.74)" }}
+        >
+          {tool.blurb}
+        </p>
+      </div>
+    </>
+  );
+
+  const style: CSSProperties = {
+    minHeight: feature ? 340 : 300,
+    border: `1px solid ${tool.live ? "rgba(201,247,61,0.35)" : "var(--hairline)"}`,
+  };
+
+  const className = `tool-card ${tool.live ? "" : "tool-card--soon"} ${
+    feature ? "sm:col-span-2" : ""
+  }`;
+
+  return (
+    <Link href={tool.href} className={className} style={style}>
+      {inner}
+    </Link>
+  );
+}
+
+/* ── How a loan works, with the ticket ────────────────────────────────────*/
+
+const STEPS: [string, string][] = [
+  ["A lender posts an offer", "Amount, interest, term, and which Boys they accept."],
+  ["You take the one that suits", "Your Boy enters escrow, the USDG lands in your wallet."],
+  ["Repay before the deadline", "Escrow releases your Boy the moment it clears."],
+  ["Or the Boy is theirs", "No auction, no grace period, no extension."],
+];
+
+function HowItWorks() {
+  return (
+    <section
+      id="how"
+      className="scroll-mt-24 px-5 py-24 sm:px-8"
+      style={{ background: "var(--ink-2)" }}
+    >
+      <div className="mx-auto grid max-w-[1180px] items-center gap-14 lg:grid-cols-[1fr_auto] lg:gap-12">
+        <div>
+          <h2
+            className="m-0 max-w-[15ch] font-black leading-[1]"
+            style={{ fontSize: "clamp(2.1rem, 5vw, 3.2rem)", letterSpacing: "-0.025em" }}
           >
-            <Link
-              href="/market"
-              className="inline-flex items-center justify-center rounded-full px-8 py-4 text-[15px] font-extrabold transition-transform"
-              style={{ background: "var(--lime)", color: "var(--ink)" }}
-              onMouseEnter={(e: MouseEvent<HTMLAnchorElement>) =>
-                (e.currentTarget.style.transform = "translateY(-2px)")
-              }
-              onMouseLeave={(e: MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.transform = "")}
-            >
-              Browse offers
-            </Link>
-            <a
-              href="#how"
-              className="inline-flex items-center justify-center rounded-full px-8 py-4 text-[15px] font-bold transition-colors"
-              style={{
-                border: "1px solid rgba(255,255,255,0.2)",
-                color: "#fff",
-              }}
-              onMouseEnter={(e: MouseEvent<HTMLAnchorElement>) =>
-                (e.currentTarget.style.background = "rgba(255,255,255,0.06)")
-              }
-              onMouseLeave={(e: MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.background = "transparent")}
-            >
-              How it works
-            </a>
-          </div>
+            Borrow against your Boy. Keep your Boy.
+          </h2>
+
+          <ol className="m-0 mt-10 grid list-none grid-cols-1 gap-7 p-0 sm:grid-cols-2">
+            {STEPS.map(([title, body], i) => (
+              <li key={title} className="flex gap-4">
+                <span
+                  className="mt-0.5 grid h-8 w-8 flex-shrink-0 place-items-center rounded-full text-[14px] font-black"
+                  style={{
+                    background: i === 3 ? "var(--punch)" : "var(--lime)",
+                    color: i === 3 ? "#fff" : "var(--ink)",
+                    fontFamily: "var(--mono)",
+                  }}
+                  aria-hidden="true"
+                >
+                  {i + 1}
+                </span>
+                <div>
+                  <h3 className="m-0 text-[16.5px] font-extrabold leading-snug">{title}</h3>
+                  <p
+                    className="m-0 mt-1.5 max-w-[38ch] text-[14px] leading-relaxed"
+                    style={{ color: "var(--fg-dim)" }}
+                  >
+                    {body}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <Link
+            href="/p2p"
+            className="mt-10 inline-flex items-center rounded-full px-8 py-3.5 text-[14.5px] font-extrabold"
+            style={{ background: "var(--lime)", color: "var(--ink)" }}
+          >
+            Browse offers
+          </Link>
         </div>
 
         <LoanTicket />
@@ -188,41 +276,31 @@ function Hero() {
   );
 }
 
-/* ── The loan ticket — the one bold object on the page ────────────────────*/
-
-type Side = "borrow" | "lend";
-
 function LoanTicket() {
-  const [side, setSide] = useState<Side>("borrow");
-  const borrowing = side === "borrow";
+  const [lending, setLending] = useState(false);
 
   return (
-    <div className="ticket-drop justify-self-center lg:justify-self-end">
-      <div
-        className="w-[330px] sm:w-[382px]"
-        style={{ transform: "rotate(-2.2deg)" }}
-      >
-        {/* Side switch, sitting on the paper's shoulder */}
+    <div className="ticket-drop justify-self-center">
+      <div className="w-[320px] sm:w-[360px]" style={{ transform: "rotate(-2.2deg)" }}>
         <div
           className="mb-3 inline-flex gap-1 rounded-full p-1"
-          style={{ background: "rgba(255,255,255,0.08)" }}
-          role="tablist"
-          aria-label="Show the ticket from either side"
+          style={{ background: "rgba(255,255,255,0.09)" }}
         >
-          {(["borrow", "lend"] as Side[]).map((s) => (
+          {[false, true].map((v) => (
             <button
-              key={s}
+              key={String(v)}
               type="button"
-              role="tab"
-              aria-selected={side === s}
-              onClick={() => setSide(s)}
-              className="rounded-full px-4 py-1.5 text-[12.5px] font-bold capitalize transition-colors"
+              aria-pressed={lending === v}
+              onClick={() => setLending(v)}
+              className="rounded-full px-4 py-1.5 text-[12.5px] font-bold"
               style={{
-                background: side === s ? "var(--lime)" : "transparent",
-                color: side === s ? "var(--ink)" : "var(--fg-dim)",
+                background: lending === v ? "var(--lime)" : "transparent",
+                color: lending === v ? "var(--ink)" : "var(--fg-dim)",
+                border: "none",
+                cursor: "pointer",
               }}
             >
-              {s === "borrow" ? "I'm borrowing" : "I'm lending"}
+              {v ? "I'm lending" : "I'm borrowing"}
             </button>
           ))}
         </div>
@@ -233,16 +311,14 @@ function LoanTicket() {
             {
               background: "var(--paper)",
               color: "var(--paper-ink)",
-              boxShadow: "0 30px 70px rgba(0,0,0,0.5)",
+              boxShadow: "0 30px 70px rgba(0,0,0,0.45)",
               "--notch-y": "58%",
             } as CSSProperties
           }
         >
           <header className="flex items-start justify-between">
             <div>
-              <p className="m-0 text-[19px] font-extrabold leading-none">
-                Loan ticket
-              </p>
+              <p className="m-0 text-[19px] font-extrabold leading-none">Loan ticket</p>
               <p
                 className="m-0 mt-1.5 text-[11.5px]"
                 style={{ fontFamily: "var(--mono)", color: "#6d6482" }}
@@ -262,18 +338,15 @@ function LoanTicket() {
             className="mt-5 flex items-center gap-3.5 rounded-[14px] p-3"
             style={{ background: "rgba(26,21,48,0.06)" }}
           >
-            <div
+            <img
+              src="/logo.png"
+              alt=""
+              width={48}
+              height={48}
               className="h-12 w-12 flex-shrink-0 rounded-[10px]"
-              style={{
-                background:
-                  "linear-gradient(145deg, var(--sky), var(--violet) 55%, var(--punch))",
-              }}
-              aria-hidden="true"
             />
-            <div className="min-w-0">
-              <p className="m-0 text-[14.5px] font-bold leading-tight">
-                Boy #1204
-              </p>
+            <div>
+              <p className="m-0 text-[14.5px] font-bold leading-tight">Boy #1204</p>
               <p
                 className="m-0 text-[11.5px]"
                 style={{ fontFamily: "var(--mono)", color: "#6d6482" }}
@@ -283,14 +356,11 @@ function LoanTicket() {
             </div>
           </div>
 
-          <dl className="mt-5 grid grid-cols-2 gap-y-4">
-            <Term label={borrowing ? "You receive" : "You lend"} value="400 USDG" big />
+          <dl className="m-0 mt-5 grid grid-cols-2 gap-y-4">
+            <Term label={lending ? "You lend" : "You receive"} value="400 USDG" big />
             <Term label="Interest" value="10%" big />
             <Term label="Term" value="7 days" />
-            <Term
-              label={borrowing ? "You repay" : "You're owed"}
-              value="440 USDG"
-            />
+            <Term label={lending ? "You're owed" : "You repay"} value="440 USDG" />
           </dl>
 
           <div className="perforation my-6 h-[2px]" aria-hidden="true" />
@@ -299,9 +369,9 @@ function LoanTicket() {
             className="m-0 text-[12.5px] leading-relaxed"
             style={{ color: "#6d6482", fontFamily: "var(--mono)" }}
           >
-            {borrowing
-              ? "Repay 440 USDG by day 7 and Boy #1204 returns to your wallet automatically."
-              : "If day 7 passes unpaid, Boy #1204 transfers to you. No auction, no grace period."}
+            {lending
+              ? "If day 7 passes unpaid, Boy #1204 transfers to you."
+              : "Repay 440 USDG by day 7 and Boy #1204 comes home."}
           </p>
         </article>
       </div>
@@ -309,15 +379,7 @@ function LoanTicket() {
   );
 }
 
-function Term({
-  label,
-  value,
-  big = false,
-}: {
-  label: string;
-  value: string;
-  big?: boolean;
-}) {
+function Term({ label, value, big = false }: { label: string; value: string; big?: boolean }) {
   return (
     <div>
       <dt className="m-0 text-[12px] font-semibold" style={{ color: "#6d6482" }}>
@@ -325,10 +387,7 @@ function Term({
       </dt>
       <dd
         className="m-0 mt-0.5 font-bold leading-none"
-        style={{
-          fontFamily: "var(--mono)",
-          fontSize: big ? "21px" : "16px",
-        }}
+        style={{ fontFamily: "var(--mono)", fontSize: big ? "21px" : "16px" }}
       >
         {value}
       </dd>
@@ -336,139 +395,77 @@ function Term({
   );
 }
 
-/* ── Facts strip ──────────────────────────────────────────────────────────*/
+/* ── The collection itself ────────────────────────────────────────────────*/
 
-function Facts() {
+function TheBoys() {
+  const art = TOOLS.map((t) => t.image);
+
   return (
-    <section className="px-5 sm:px-8">
-      <div
-        className="mx-auto grid max-w-[1180px] grid-cols-2 gap-px overflow-hidden rounded-[20px] md:grid-cols-4"
-        style={{ background: "var(--hairline)" }}
-      >
-        {FACTS.map(([label, value]) => (
-          <div key={label} className="px-6 py-6" style={{ background: "var(--ink)" }}>
-            <p
-              className="m-0 text-[12px]"
-              style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)" }}
+    <section className="px-5 py-24 sm:px-8">
+      <div className="mx-auto max-w-[1180px]">
+        <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+          <div>
+            <h2
+              className="m-0 font-black leading-[1]"
+              style={{ fontSize: "clamp(2.1rem, 5vw, 3.2rem)", letterSpacing: "-0.025em" }}
             >
-              {label}
+              The Boys
+            </h2>
+            <p
+              className="m-0 mt-5 max-w-[48ch] text-[16.5px] leading-relaxed"
+              style={{ color: "var(--fg-dim)" }}
+            >
+              {COLLECTION.supply} of them, on {COLLECTION.chain}. Loud hair, worse
+              attitudes, and a protocol underneath that treats them as collateral
+              rather than wallpaper.
             </p>
-            <p className="m-0 mt-1.5 text-[19px] font-extrabold">{value}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
+            <p
+              className="m-0 mt-4 max-w-[48ch] text-[16.5px] leading-relaxed"
+              style={{ color: "var(--fg-dim)" }}
+            >
+              Holding one is what gets you into the Hood: borrow against it, lend
+              to someone who wants to, and keep it through both.
+            </p>
 
-/* ── How it works ─────────────────────────────────────────────────────────*/
-
-function HowItWorks() {
-  return (
-    <section id="how" className="scroll-mt-24 px-5 py-28 sm:px-8">
-      <div className="mx-auto max-w-[1180px]">
-        <h2
-          className="m-0 max-w-[16ch] font-black leading-[0.98]"
-          style={{ fontSize: "clamp(2.1rem, 5vw, 3.3rem)", letterSpacing: "-0.02em" }}
-        >
-          Four steps, and the contract does three of them.
-        </h2>
-
-        <ol className="mt-14 grid list-none grid-cols-1 gap-x-10 gap-y-12 p-0 md:grid-cols-2">
-          {STEPS.map((step, i) => (
-            <li key={step.title} className="flex gap-5">
-              <span
-                className="mt-1 grid h-9 w-9 flex-shrink-0 place-items-center rounded-full text-[15px] font-black"
-                style={{
-                  background: i === 3 ? "var(--punch)" : "var(--lime)",
-                  color: i === 3 ? "#fff" : "var(--ink)",
-                  fontFamily: "var(--mono)",
-                }}
-                aria-hidden="true"
-              >
-                {i + 1}
-              </span>
-              <div>
-                <h3 className="m-0 text-[20px] font-extrabold leading-snug">
-                  {step.title}
-                </h3>
-                <p
-                  className="m-0 mt-2.5 max-w-[52ch] text-[15.5px] leading-relaxed"
-                  style={{ color: "var(--fg-dim)" }}
-                >
-                  {step.body}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </section>
-  );
-}
-
-/* ── What ships now vs later ──────────────────────────────────────────────*/
-
-function Scope() {
-  return (
-    <section className="px-5 sm:px-8">
-      <div className="mx-auto max-w-[1180px]">
-        <div
-          className="rounded-[26px] p-8 sm:p-12"
-          style={{ background: "var(--ink-2)" }}
-        >
-          <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16">
-            <div>
-              <span
-                className="inline-block rounded-full px-3 py-1 text-[11.5px] font-bold"
+            <div className="mt-8 flex flex-wrap gap-3">
+              <a
+                href={LINKS.opensea}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center rounded-full px-7 py-3.5 text-[14.5px] font-extrabold"
                 style={{ background: "var(--lime)", color: "var(--ink)" }}
               >
-                Live at launch
-              </span>
-              <h2
-                className="m-0 mt-5 font-black leading-[1.02]"
-                style={{ fontSize: "clamp(1.9rem, 4vw, 2.7rem)", letterSpacing: "-0.02em" }}
-              >
-                Peer-to-peer lending
-              </h2>
-              <p
-                className="m-0 mt-4 max-w-[54ch] text-[16px] leading-relaxed"
-                style={{ color: "var(--fg-dim)" }}
-              >
-                One lender, one borrower, one Boy. Lenders write offers, you take
-                the one you like, and the escrow contract handles the rest. No
-                oracle, no pooled capital, nothing to be liquidated out from under
-                you by a price feed.
-              </p>
+                Join the Boys
+              </a>
               <Link
-                href="/market"
-                className="mt-7 inline-flex items-center rounded-full px-7 py-3.5 text-[14.5px] font-extrabold"
-                style={{ background: "var(--lime)", color: "var(--ink)" }}
+                href="/about"
+                className="inline-flex items-center rounded-full px-7 py-3.5 text-[14.5px] font-extrabold"
+                style={{ border: "1px solid rgba(255,255,255,0.22)", color: "#fff" }}
               >
-                Browse offers
+                About the Hood
               </Link>
             </div>
+          </div>
 
-            <div className="flex flex-col gap-3">
-              <p
-                className="m-0 text-[13px]"
-                style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)" }}
+          <div className="grid grid-cols-2 gap-3">
+            {art.map((src, i) => (
+              <div
+                key={src}
+                className="overflow-hidden rounded-[18px]"
+                style={{
+                  aspectRatio: "1/1",
+                  border: "1px solid var(--hairline)",
+                  transform: i % 2 === 0 ? "rotate(-1.5deg)" : "rotate(1.5deg)",
+                }}
               >
-                Not in this release
-              </p>
-              <NextUp
-                name="Pool lending"
-                body="Shared liquidity and instant borrowing against a protocol-set LTV. Needs a price feed the collection cannot yet support honestly."
-              />
-              <NextUp
-                name="Buy now, pay later"
-                body="Finance a Boy at purchase and pay it down over time."
-              />
-              <NextUp
-                name="More collections"
-                body="The contracts already take a collection address, so this is a deployment, not a rebuild."
-              />
-            </div>
+                <img
+                  src={src}
+                  alt=""
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -476,139 +473,48 @@ function Scope() {
   );
 }
 
-function NextUp({ name, body }: { name: string; body: string }) {
+/* ── Closing band ─────────────────────────────────────────────────────────*/
+
+function JoinBand() {
   return (
-    <div
-      className="rounded-[14px] p-5"
-      style={{ background: "rgba(255,255,255,0.04)" }}
-    >
-      <p className="m-0 text-[15px] font-bold">{name}</p>
-      <p
-        className="m-0 mt-1.5 text-[13.5px] leading-relaxed"
-        style={{ color: "var(--fg-dim)" }}
+    <section className="px-5 pb-24 sm:px-8">
+      <div
+        className="scanlines relative mx-auto max-w-[1180px] overflow-hidden rounded-[28px] px-8 py-16 text-center sm:py-20"
+        style={{ background: "var(--lime)" }}
       >
-        {body}
-      </p>
-    </div>
-  );
-}
-
-/* ── Toolkit ──────────────────────────────────────────────────────────────*/
-
-function Toolkit() {
-  return (
-    <section id="toolkit" className="scroll-mt-24 px-5 py-28 sm:px-8">
-      <div className="mx-auto max-w-[1180px]">
         <h2
-          className="m-0 font-black leading-[1.02]"
-          style={{ fontSize: "clamp(2.1rem, 5vw, 3.3rem)", letterSpacing: "-0.02em" }}
+          className="wordmark wordmark--dark glitch m-0"
+          data-text="Get in the Hood"
+          style={{ fontSize: "clamp(2rem, 6.5vw, 3.6rem)", lineHeight: 1 }}
         >
-          The Hood Toolkit
+          Get in the Hood
         </h2>
         <p
-          className="m-0 mt-4 max-w-[52ch] text-[16px] leading-relaxed"
-          style={{ color: "var(--fg-dim)" }}
+          className="mx-auto m-0 mt-5 max-w-[44ch] text-[16px] font-semibold leading-relaxed"
+          style={{ color: "rgba(11,8,24,0.72)" }}
         >
-          Everything ships after mint. Hood Credit is first out the door.
+          Grab a Boy, then put him to work. Lending is live — the rest of the
+          toolkit lands after mint.
         </p>
-
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {TOOLKIT.map((tool) => (
-            <article
-              key={tool.name}
-              className="relative flex flex-col rounded-[20px] p-6"
-              style={{
-                background: tool.live ? tool.tint : "var(--ink-2)",
-                color: tool.live ? "var(--ink)" : "#fff",
-                minHeight: "196px",
-              }}
-            >
-              <span
-                className="self-start rounded-full px-2.5 py-1 text-[10.5px] font-bold"
-                style={{
-                  background: tool.live
-                    ? "rgba(14,10,40,0.9)"
-                    : "rgba(255,255,255,0.08)",
-                  color: tool.live ? tool.tint : "var(--fg-faint)",
-                }}
-              >
-                {tool.live ? "Live" : "Coming soon"}
-              </span>
-              <h3 className="m-0 mt-auto pt-6 text-[21px] font-extrabold">
-                {tool.name}
-              </h3>
-              <p
-                className="m-0 mt-2 text-[13.5px] leading-relaxed"
-                style={{
-                  color: tool.live ? "rgba(14,10,40,0.72)" : "var(--fg-dim)",
-                }}
-              >
-                {tool.body}
-              </p>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── FAQ ──────────────────────────────────────────────────────────────────*/
-
-function Faq() {
-  const [open, setOpen] = useState<number | null>(0);
-
-  return (
-    <section id="faq" className="scroll-mt-24 px-5 pb-28 sm:px-8">
-      <div className="mx-auto max-w-[820px]">
-        <h2
-          className="m-0 font-black leading-[1.02]"
-          style={{ fontSize: "clamp(2.1rem, 5vw, 3.3rem)", letterSpacing: "-0.02em" }}
-        >
-          Questions
-        </h2>
-
-        <div className="mt-10">
-          {FAQS.map((f, i) => {
-            const isOpen = open === i;
-            return (
-              <div key={f.q} style={{ borderTop: "1px solid var(--hairline)" }}>
-                <h3 className="m-0">
-                  <button
-                    type="button"
-                    aria-expanded={isOpen}
-                    onClick={() => setOpen(isOpen ? null : i)}
-                    className="flex w-full items-center justify-between gap-6 py-6 text-left"
-                    style={{ background: "none", border: "none", color: "#fff" }}
-                  >
-                    <span className="text-[17px] font-bold sm:text-[18px]">
-                      {f.q}
-                    </span>
-                    <span
-                      className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-[17px] font-bold transition-transform"
-                      style={{
-                        background: isOpen ? "var(--lime)" : "rgba(255,255,255,0.08)",
-                        color: isOpen ? "var(--ink)" : "#fff",
-                        transform: isOpen ? "rotate(45deg)" : "none",
-                      }}
-                      aria-hidden="true"
-                    >
-                      +
-                    </span>
-                  </button>
-                </h3>
-                {isOpen && (
-                  <p
-                    className="m-0 max-w-[62ch] pb-7 text-[15.5px] leading-relaxed"
-                    style={{ color: "var(--fg-dim)" }}
-                  >
-                    {f.a}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-          <div style={{ borderTop: "1px solid var(--hairline)" }} />
+        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+          <a
+            href={LINKS.opensea}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-full px-8 py-4 text-[15px] font-extrabold"
+            style={{ background: "var(--ink)", color: "var(--lime)" }}
+          >
+            Join the Boys
+          </a>
+          <a
+            href={LINKS.x}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-full px-8 py-4 text-[15px] font-extrabold"
+            style={{ border: "2px solid rgba(11,8,24,0.28)", color: "var(--ink)" }}
+          >
+            Follow on X
+          </a>
         </div>
       </div>
     </section>
