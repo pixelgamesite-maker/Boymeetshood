@@ -3,7 +3,8 @@
    Import once, in main.tsx:   import "@/styles/hood.css";
    ========================================================================== */
 
-@import url("https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap");
+/* Fonts are loaded in index.html <head> — a <link> there starts the download
+   immediately, where an @import here would wait for this stylesheet to parse. */
 
 :root {
   /* Surfaces — deep indigo night, not near-black */
