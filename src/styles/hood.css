@@ -1,6 +1,9 @@
 /* ==========================================================================
    BoyMeetsHood — theme
-   Import once, in main.tsx:   import "@/styles/hood.css";
+   REQUIRED: import this once, in src/main.tsx:
+       import "@/styles/hood.css";
+   Without it every var() below is undefined and branded backgrounds render
+   transparent.
    ========================================================================== */
 
 :root {
@@ -15,7 +18,7 @@
   --ink-3: #1e1746;
   --hairline: rgba(255, 255, 255, 0.1);
 
-  /* Cartoon accents, pulled from the collection art */
+  /* Cartoon accents */
   --punch: #ff3d71;
   --sky: #45d6f5;
   --violet: #7b5cff;
@@ -52,82 +55,36 @@ body {
   border-radius: 4px;
 }
 
-/* ── Wordmark + glitch ─────────────────────────────────────────────────────
-   Set data-text to the same string as the element's text content. The two
-   pseudo-elements are the red and cyan channels, kicked apart on a stutter. */
+/* ── Wordmark ─────────────────────────────────────────────────────────────
+   Static chromatic fringe, matching the collection's logotype. No animation:
+   the moving version was more trouble than it was worth. */
 
 .wordmark {
   font-family: var(--display);
   font-weight: 900;
   letter-spacing: -0.035em;
-  position: relative;
   display: inline-block;
 }
 
-/* On a lime background the wordmark is black with colour fringing */
+/* Black type on a lime background */
 .wordmark--dark {
   color: #0b0818;
   text-shadow: -0.035em 0 0 var(--punch), 0.035em 0 0 var(--sky);
 }
 
-/* On a dark background it's white with the same fringing */
+/* White type on a dark background */
 .wordmark--light {
   color: #fff;
   text-shadow: -0.035em 0 0 var(--punch), 0.035em 0 0 var(--sky);
 }
 
+/* Kept as a no-op so any leftover markup using it renders normally. */
 .glitch::before,
 .glitch::after {
-  content: attr(data-text);
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  clip-path: inset(0 0 100% 0);
-}
-.glitch::before {
-  color: var(--punch);
-  transform: translateX(-0.05em);
-  animation: glitch-a 3.4s steps(1) infinite;
-}
-.glitch::after {
-  color: var(--sky);
-  transform: translateX(0.05em);
-  animation: glitch-b 3.4s steps(1) infinite;
+  content: none;
 }
 
-@keyframes glitch-a {
-  0%, 88%, 100% { clip-path: inset(0 0 100% 0); }
-  89% { clip-path: inset(12% 0 62% 0); transform: translateX(-0.09em); }
-  91% { clip-path: inset(48% 0 26% 0); transform: translateX(0.06em); }
-  93% { clip-path: inset(70% 0 8% 0); transform: translateX(-0.05em); }
-  95% { clip-path: inset(0 0 100% 0); }
-}
-@keyframes glitch-b {
-  0%, 88%, 100% { clip-path: inset(0 0 100% 0); }
-  90% { clip-path: inset(30% 0 44% 0); transform: translateX(0.09em); }
-  92% { clip-path: inset(62% 0 18% 0); transform: translateX(-0.07em); }
-  94% { clip-path: inset(6% 0 78% 0); transform: translateX(0.05em); }
-  96% { clip-path: inset(0 0 100% 0); }
-}
-
-/* ── Boot splash ──────────────────────────────────────────────────────────*/
-
-@keyframes boot-out {
-  to { opacity: 0; visibility: hidden; }
-}
-@keyframes boot-logo {
-  from { opacity: 0; transform: scale(0.82); }
-  to { opacity: 1; transform: scale(1); }
-}
-@keyframes boot-scan {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(100%); }
-}
-@keyframes blink {
-  50% { opacity: 0.25; }
-}
-
-/* ── Page entrance: one sequence, hero only ───────────────────────────────*/
+/* ── Page entrance ────────────────────────────────────────────────────────*/
 
 @keyframes rise {
   from { opacity: 0; transform: translateY(18px); }
@@ -166,8 +123,9 @@ body {
   position: relative;
   display: block;
   overflow: hidden;
-  border-radius: 24px;
+  border-radius: 22px;
   isolation: isolate;
+  background: var(--ink);
   transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .tool-card:hover { transform: translateY(-4px); }
@@ -188,14 +146,14 @@ body {
   z-index: -1;
   background: linear-gradient(
     to top,
-    rgba(11, 8, 24, 0.94) 6%,
-    rgba(11, 8, 24, 0.62) 44%,
-    rgba(11, 8, 24, 0.18) 100%
+    rgba(11, 8, 24, 0.95) 8%,
+    rgba(11, 8, 24, 0.6) 48%,
+    rgba(11, 8, 24, 0.15) 100%
   );
 }
 .tool-card--soon img { filter: grayscale(0.7) brightness(0.55); }
 
-/* ── Scanlines, for depth over flat art ───────────────────────────────────*/
+/* ── Scanlines, for depth over flat colour ────────────────────────────────*/
 
 .scanlines::before {
   content: "";
@@ -204,15 +162,13 @@ body {
   pointer-events: none;
   background: repeating-linear-gradient(
     to bottom,
-    rgba(255, 255, 255, 0.03) 0 1px,
+    rgba(11, 8, 24, 0.035) 0 1px,
     transparent 1px 3px
   );
 }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .glitch::before,
-  .glitch::after { animation: none; clip-path: inset(0 0 100% 0); }
   .rise, .ticket-drop {
     animation: none !important;
     opacity: 1 !important;
