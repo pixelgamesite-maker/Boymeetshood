@@ -54,8 +54,7 @@ export default function About() {
         >
           <div className="mx-auto max-w-[900px]">
             <h1
-              className="wordmark wordmark--dark glitch m-0"
-              data-text="About the Hood"
+              className="wordmark wordmark--dark m-0"
               style={{ fontSize: "clamp(2.2rem, 8vw, 4.2rem)", lineHeight: 0.98 }}
             >
               About the Hood
