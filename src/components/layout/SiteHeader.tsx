@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 export default function SiteHeader() {
   const [stuck, setStuck] = useState(false);
@@ -38,30 +39,132 @@ export default function SiteHeader() {
           </span>
         </Link>
 
-        <ConnectButton />
+        <HoodConnectButton />
       </div>
     </header>
   );
 }
 
+const pill =
+  "inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[13.5px] font-extrabold sm:px-6 sm:text-[14px]";
+
 /**
- * Placeholder for RainbowKit's <ConnectButton />. Swap the body once Robinhood
- * Chain is registered as a custom chain in the wagmi config.
+ * RainbowKit's button, restyled as a lime pill so it doesn't look bolted on.
+ * ConnectButton.Custom hands us the state and the modal openers; everything
+ * visual below is ours.
  */
-function ConnectButton() {
+function HoodConnectButton() {
   return (
-    <button
-      type="button"
-      disabled
-      title="Wallet connection lands with the market"
-      className="inline-flex cursor-not-allowed items-center rounded-full px-5 py-2.5 text-[13.5px] font-extrabold sm:px-6 sm:text-[14px]"
-      style={{
-        background: "rgba(255,255,255,0.07)",
-        color: "var(--fg-faint)",
-        border: "1px solid var(--hairline)",
+    <ConnectButton.Custom>
+      {({
+        account,
+        chain,
+        openAccountModal,
+        openChainModal,
+        openConnectModal,
+        authenticationStatus,
+        mounted,
+      }) => {
+        // Hide until wagmi has hydrated, otherwise the button flashes the
+        // wrong state on first paint.
+        const ready = mounted && authenticationStatus !== "loading";
+        const connected =
+          ready &&
+          account &&
+          chain &&
+          (!authenticationStatus || authenticationStatus === "authenticated");
+
+        return (
+          <div
+            aria-hidden={!ready}
+            style={
+              !ready
+                ? { opacity: 0, pointerEvents: "none", userSelect: "none" }
+                : undefined
+            }
+          >
+            {(() => {
+              if (!connected) {
+                return (
+                  <button
+                    type="button"
+                    onClick={openConnectModal}
+                    className={pill}
+                    style={{ background: "var(--lime)", color: "var(--ink)" }}
+                  >
+                    Connect wallet
+                  </button>
+                );
+              }
+
+              if (chain.unsupported) {
+                return (
+                  <button
+                    type="button"
+                    onClick={openChainModal}
+                    className={pill}
+                    style={{ background: "var(--punch)", color: "#fff" }}
+                  >
+                    Wrong network
+                  </button>
+                );
+              }
+
+              return (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={openChainModal}
+                    aria-label={`Network: ${chain.name}. Change network`}
+                    className="hidden h-[42px] w-[42px] items-center justify-center rounded-full sm:flex"
+                    style={{
+                      background: "rgba(255,255,255,0.07)",
+                      border: "1px solid var(--hairline)",
+                    }}
+                  >
+                    {chain.hasIcon && chain.iconUrl ? (
+                      <img
+                        src={chain.iconUrl}
+                        alt=""
+                        className="h-[22px] w-[22px] rounded-full"
+                        style={{ background: chain.iconBackground }}
+                      />
+                    ) : (
+                      <span
+                        className="h-[10px] w-[10px] rounded-full"
+                        style={{ background: "var(--lime)" }}
+                      />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={openAccountModal}
+                    className={pill}
+                    style={{
+                      background: "rgba(255,255,255,0.07)",
+                      color: "#fff",
+                      border: "1px solid var(--hairline)",
+                    }}
+                  >
+                    <span style={{ fontFamily: "var(--mono)" }}>
+                      {account.displayName}
+                    </span>
+                    {account.displayBalance && (
+                      <span
+                        className="hidden sm:inline"
+                        style={{ color: "var(--fg-faint)", fontWeight: 600 }}
+                      >
+                        {account.displayBalance}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        );
       }}
-    >
-      Connect wallet
-    </button>
+    </ConnectButton.Custom>
   );
 }
