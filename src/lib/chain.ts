@@ -1,59 +1,45 @@
 import { defineChain } from "viem";
+import { arbitrumSepolia } from "viem/chains";
 
 /**
- * Robinhood Chain is not in wagmi's built-in chain list, so it has to be
- * defined by hand and passed into the wagmi config.
+ * Robinhood Chain isn't in wagmi's built-in chain list, so it's defined here
+ * and read from .env — that way deploying to a different network never means
+ * editing source.
  *
- * Chain ids confirmed against this project's earlier deployments:
- *   4663   mainnet
- *   46630  testnet
+ *   VITE_CHAIN_ID        numeric chain id
+ *   VITE_RPC_URL         https RPC endpoint
+ *   VITE_EXPLORER_URL    block explorer base url
  *
- * Everything in this build has gone straight to mainnet, so `robinhoodChain`
- * below is the one the app uses. The testnet definition is exported in case a
- * dry run is ever wanted before a risky deploy.
+ * Until those exist, the app falls back to Arbitrum Sepolia. Robinhood Chain
+ * is on the Arbitrum stack, so a testnet there behaves closely enough to
+ * verify wallet connection, network switching and signing.
+ *
+ * ⚠️ The fallback is for development only. Never ship a build where
+ *    CHAIN_CONFIGURED is false — it would point real users at a testnet.
  */
 
-/** RPC and explorer come from .env so they can change without a code edit:
- *
- *   VITE_RH_RPC_URL=https://...
- *   VITE_RH_EXPLORER_URL=https://...
- *
- * Vite only exposes vars prefixed with VITE_, and they're baked in at build
- * time — so on Railway these must be set before the build step, not after.
- */
-const RPC_URL = import.meta.env.VITE_RH_RPC_URL ?? "";
-const EXPLORER_URL = import.meta.env.VITE_RH_EXPLORER_URL ?? "";
+const envId = Number(import.meta.env.VITE_CHAIN_ID ?? "");
+const envRpc = (import.meta.env.VITE_RPC_URL ?? "").trim();
+const envExplorer = (import.meta.env.VITE_EXPLORER_URL ?? "").trim();
 
-export const robinhoodChain = defineChain({
-  id: 4663,
-  name: "Robinhood Chain",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: RPC_URL ? [RPC_URL] : [] } },
-  blockExplorers: {
-    default: { name: "Explorer", url: EXPLORER_URL },
-  },
-  testnet: false,
-});
+export const CHAIN_CONFIGURED =
+  Number.isInteger(envId) && envId > 0 && envRpc.startsWith("http");
 
-export const robinhoodTestnet = defineChain({
-  id: 46630,
-  name: "Robinhood Chain Testnet",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: RPC_URL ? [RPC_URL] : [] } },
-  blockExplorers: {
-    default: { name: "Explorer", url: EXPLORER_URL },
-  },
-  testnet: true,
-});
-
-/**
- * False until an RPC endpoint is supplied. Gate wallet reads on this rather
- * than letting wagmi fail with an opaque transport error.
- */
-export const CHAIN_CONFIGURED = RPC_URL.length > 0;
+export const robinhoodChain = CHAIN_CONFIGURED
+  ? defineChain({
+      id: envId,
+      name: "Robinhood Chain",
+      nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+      rpcUrls: { default: { http: [envRpc] } },
+      blockExplorers: envExplorer
+        ? { default: { name: "Explorer", url: envExplorer } }
+        : undefined,
+      testnet: false,
+    })
+  : arbitrumSepolia;
 
 /** Build an explorer link for a transaction or address. */
 export function explorerUrl(kind: "tx" | "address", value: string): string {
-  if (!EXPLORER_URL) return "";
-  return `${EXPLORER_URL.replace(/\/$/, "")}/${kind}/${value}`;
+  const base = robinhoodChain.blockExplorers?.default.url;
+  return base ? `${base}/${kind}/${value}` : "";
 }
