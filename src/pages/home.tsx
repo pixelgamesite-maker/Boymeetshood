@@ -110,8 +110,8 @@ function Hero() {
           className="rise mt-5 grid gap-4 sm:grid-cols-2"
           style={{ animationDelay: "0.3s" }}
         >
-          {TOOLS.map((tool, i) => (
-            <ToolCard key={tool.name} tool={tool} feature={i === 0} />
+          {TOOLS.map((tool) => (
+            <ToolCard key={tool.name} tool={tool} />
           ))}
         </div>
 
@@ -156,18 +156,16 @@ function Hero() {
   );
 }
 
-function ToolCard({ tool, feature }: { tool: Tool; feature: boolean }) {
+function ToolCard({ tool }: { tool: Tool }) {
   const style: CSSProperties = {
-    minHeight: feature ? 300 : 260,
+    minHeight: 280,
     border: `2px solid ${tool.live ? "rgba(11,8,24,0.9)" : "rgba(11,8,24,0.35)"}`,
   };
 
   return (
     <Link
       href={tool.href}
-      className={`tool-card ${tool.live ? "" : "tool-card--soon"} ${
-        feature ? "sm:col-span-2" : ""
-      }`}
+      className={`tool-card ${tool.live ? "" : "tool-card--soon"}`}
       style={style}
     >
       <img src={tool.image} alt="" loading="lazy" />
@@ -187,9 +185,7 @@ function ToolCard({ tool, feature }: { tool: Tool; feature: boolean }) {
         <h3
           className="m-0 mt-8 font-black leading-[1]"
           style={{
-            fontSize: feature
-              ? "clamp(1.9rem, 4.4vw, 2.7rem)"
-              : "clamp(1.6rem, 3.4vw, 2.1rem)",
+            fontSize: "clamp(1.6rem, 3.4vw, 2.1rem)",
             letterSpacing: "-0.02em",
             color: tool.live ? tool.tint : "#fff",
           }}
