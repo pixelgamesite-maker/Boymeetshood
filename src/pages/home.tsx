@@ -10,7 +10,6 @@ export default function Home() {
       <SiteHeader />
       <main>
         <Hero />
-        <Toolkit />
         <HowItWorks />
         <TheBoys />
         <JoinBand />
@@ -20,73 +19,105 @@ export default function Home() {
   );
 }
 
-/* ── Hero: the brand, full bleed ──────────────────────────────────────────*/
+/* ── Hero: brand, then the four doors ─────────────────────────────────────*/
 
 function Hero() {
   return (
     <section
-      className="scanlines relative overflow-hidden px-5 pb-16 pt-[120px] sm:px-8 sm:pb-20 sm:pt-[150px]"
+      className="scanlines relative overflow-hidden px-5 pb-16 pt-[110px] sm:px-8 sm:pb-20 sm:pt-[140px]"
       style={{ background: "var(--lime)" }}
     >
-      <div className="relative mx-auto flex max-w-[1180px] flex-col items-center text-center">
-        <img
-          src="/logo.png"
-          alt=""
-          width={112}
-          height={112}
-          className="rise h-24 w-24 rounded-[26px] sm:h-28 sm:w-28"
-          style={{ boxShadow: "0 24px 60px rgba(11,8,24,0.26)" }}
-        />
+      <div className="relative mx-auto max-w-[1180px]">
+        <div className="flex flex-col items-center text-center">
+          <img
+            src="/logo.png"
+            alt=""
+            width={104}
+            height={104}
+            className="rise h-[88px] w-[88px] rounded-[24px] sm:h-[104px] sm:w-[104px]"
+            style={{ boxShadow: "0 24px 60px rgba(11,8,24,0.26)" }}
+          />
 
-        <h1
-          className="wordmark wordmark--dark glitch rise m-0 mt-8"
-          data-text="BoyMeetsHood"
-          style={{
-            fontSize: "clamp(2.6rem, 11vw, 6.2rem)",
-            lineHeight: 0.95,
-            animationDelay: "0.08s",
-          }}
-        >
-          BoyMeetsHood
-        </h1>
-
-        <p
-          className="rise m-0 mt-6 max-w-[34ch] text-[17px] font-semibold leading-snug sm:text-[21px]"
-          style={{ color: "rgba(11,8,24,0.78)", animationDelay: "0.16s" }}
-        >
-          {COLLECTION.supply} Boys. One Hood.
-          <br />
-          Real financial utility.
-        </p>
-
-        <div
-          className="rise mt-9 flex flex-col gap-3 sm:flex-row"
-          style={{ animationDelay: "0.24s" }}
-        >
-          <Link
-            href="/p2p"
-            className="inline-flex items-center justify-center rounded-full px-9 py-4 text-[15px] font-extrabold"
-            style={{ background: "var(--ink)", color: "var(--lime)" }}
-          >
-            Enter the Hood
-          </Link>
-          <a
-            href={LINKS.opensea}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center rounded-full px-9 py-4 text-[15px] font-extrabold"
+          <h1
+            className="wordmark wordmark--dark rise m-0 mt-7"
             style={{
-              border: "2px solid rgba(11,8,24,0.28)",
+              fontSize: "clamp(2.4rem, 10vw, 5.4rem)",
+              lineHeight: 0.95,
+              animationDelay: "0.08s",
+            }}
+          >
+            BoyMeetsHood
+          </h1>
+
+          <p
+            className="rise m-0 mt-5 max-w-[34ch] text-[17px] font-semibold leading-snug sm:text-[20px]"
+            style={{ color: "rgba(11,8,24,0.78)", animationDelay: "0.14s" }}
+          >
+            {COLLECTION.supply} Boys. One Hood. Real financial utility.
+          </p>
+
+          <div
+            className="rise mt-8 flex flex-col gap-3 sm:flex-row"
+            style={{ animationDelay: "0.2s" }}
+          >
+            <Link
+              href="/p2p"
+              className="inline-flex items-center justify-center rounded-full px-9 py-4 text-[15px] font-extrabold"
+              style={{ background: "var(--ink)", color: "var(--lime)" }}
+            >
+              Enter the Hood
+            </Link>
+            <a
+              href={LINKS.opensea}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center rounded-full px-9 py-4 text-[15px] font-extrabold"
+              style={{ border: "2px solid rgba(11,8,24,0.28)", color: "var(--ink)" }}
+            >
+              Join the Boys
+            </a>
+          </div>
+        </div>
+
+        {/* The four doors, right here in the hero */}
+        <div
+          className="rise mt-14 flex items-end justify-between gap-4"
+          style={{ animationDelay: "0.26s" }}
+        >
+          <h2
+            className="m-0 font-black leading-[1]"
+            style={{
+              fontSize: "clamp(1.6rem, 4vw, 2.4rem)",
+              letterSpacing: "-0.025em",
               color: "var(--ink)",
             }}
           >
-            Join the Boys
-          </a>
+            The Hood Toolkit
+          </h2>
+          <p
+            className="m-0 hidden text-[12px] uppercase sm:block"
+            style={{
+              fontFamily: "var(--mono)",
+              letterSpacing: "0.16em",
+              color: "rgba(11,8,24,0.52)",
+            }}
+          >
+            Everything ships after mint
+          </p>
+        </div>
+
+        <div
+          className="rise mt-5 grid gap-4 sm:grid-cols-2"
+          style={{ animationDelay: "0.3s" }}
+        >
+          {TOOLS.map((tool, i) => (
+            <ToolCard key={tool.name} tool={tool} feature={i === 0} />
+          ))}
         </div>
 
         <dl
-          className="rise mt-14 grid w-full max-w-[720px] grid-cols-2 gap-px overflow-hidden rounded-[20px] sm:grid-cols-4"
-          style={{ background: "rgba(11,8,24,0.16)", animationDelay: "0.32s" }}
+          className="rise mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-[20px] sm:grid-cols-4"
+          style={{ background: "rgba(11,8,24,0.18)", animationDelay: "0.36s" }}
         >
           {(
             [
@@ -96,13 +127,13 @@ function Hero() {
               ["Lending", "Live"],
             ] as [string, string][]
           ).map(([label, value]) => (
-            <div key={label} className="px-4 py-5" style={{ background: "var(--lime)" }}>
+            <div key={label} className="px-5 py-5" style={{ background: "var(--lime)" }}>
               <dt
                 className="m-0 text-[11px] uppercase"
                 style={{
                   fontFamily: "var(--mono)",
                   letterSpacing: "0.14em",
-                  color: "rgba(11,8,24,0.5)",
+                  color: "rgba(11,8,24,0.55)",
                 }}
               >
                 {label}
@@ -121,52 +152,28 @@ function Hero() {
   );
 }
 
-/* ── Toolkit: the four doors ──────────────────────────────────────────────*/
-
-function Toolkit() {
-  return (
-    <section className="px-5 py-24 sm:px-8">
-      <div className="mx-auto max-w-[1180px]">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2
-            className="m-0 font-black leading-[1]"
-            style={{ fontSize: "clamp(2.1rem, 5.5vw, 3.4rem)", letterSpacing: "-0.025em" }}
-          >
-            The Hood Toolkit
-          </h2>
-          <p
-            className="m-0 text-[13px] uppercase"
-            style={{
-              fontFamily: "var(--mono)",
-              letterSpacing: "0.18em",
-              color: "var(--fg-faint)",
-            }}
-          >
-            Everything ships after mint
-          </p>
-        </div>
-
-        <div className="mt-10 grid gap-4 sm:grid-cols-2">
-          {TOOLS.map((tool, i) => (
-            <ToolCard key={tool.name} tool={tool} feature={i === 0} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function ToolCard({ tool, feature }: { tool: Tool; feature: boolean }) {
-  const inner = (
-    <>
+  const style: CSSProperties = {
+    minHeight: feature ? 300 : 260,
+    border: `2px solid ${tool.live ? "rgba(11,8,24,0.9)" : "rgba(11,8,24,0.35)"}`,
+  };
+
+  return (
+    <Link
+      href={tool.href}
+      className={`tool-card ${tool.live ? "" : "tool-card--soon"} ${
+        feature ? "sm:col-span-2" : ""
+      }`}
+      style={style}
+    >
       <img src={tool.image} alt="" loading="lazy" />
-      <div className="relative flex h-full flex-col justify-end p-6 sm:p-8">
+      <div className="relative flex h-full flex-col justify-end p-6 sm:p-7">
         <span
           className="mb-auto self-start rounded-full px-3 py-1.5 text-[11px] font-extrabold uppercase"
           style={{
             fontFamily: "var(--mono)",
             letterSpacing: "0.1em",
-            background: tool.live ? tool.tint : "rgba(255,255,255,0.14)",
+            background: tool.live ? tool.tint : "rgba(255,255,255,0.16)",
             color: tool.live ? "var(--ink)" : "#fff",
           }}
         >
@@ -176,7 +183,9 @@ function ToolCard({ tool, feature }: { tool: Tool; feature: boolean }) {
         <h3
           className="m-0 mt-8 font-black leading-[1]"
           style={{
-            fontSize: feature ? "clamp(2rem, 4.6vw, 2.9rem)" : "clamp(1.7rem, 3.6vw, 2.2rem)",
+            fontSize: feature
+              ? "clamp(1.9rem, 4.4vw, 2.7rem)"
+              : "clamp(1.6rem, 3.4vw, 2.1rem)",
             letterSpacing: "-0.02em",
             color: tool.live ? tool.tint : "#fff",
           }}
@@ -184,32 +193,17 @@ function ToolCard({ tool, feature }: { tool: Tool; feature: boolean }) {
           {tool.name}
         </h3>
         <p
-          className="m-0 mt-2.5 max-w-[42ch] text-[14.5px] leading-relaxed"
-          style={{ color: "rgba(255,255,255,0.74)" }}
+          className="m-0 mt-2.5 max-w-[42ch] text-[14px] leading-relaxed"
+          style={{ color: "rgba(255,255,255,0.76)" }}
         >
           {tool.blurb}
         </p>
       </div>
-    </>
-  );
-
-  const style: CSSProperties = {
-    minHeight: feature ? 340 : 300,
-    border: `1px solid ${tool.live ? "rgba(201,247,61,0.35)" : "var(--hairline)"}`,
-  };
-
-  const className = `tool-card ${tool.live ? "" : "tool-card--soon"} ${
-    feature ? "sm:col-span-2" : ""
-  }`;
-
-  return (
-    <Link href={tool.href} className={className} style={style}>
-      {inner}
     </Link>
   );
 }
 
-/* ── How a loan works, with the ticket ────────────────────────────────────*/
+/* ── How a loan works ─────────────────────────────────────────────────────*/
 
 const STEPS: [string, string][] = [
   ["A lender posts an offer", "Amount, interest, term, and which Boys they accept."],
@@ -395,11 +389,9 @@ function Term({ label, value, big = false }: { label: string; value: string; big
   );
 }
 
-/* ── The collection itself ────────────────────────────────────────────────*/
+/* ── The collection ───────────────────────────────────────────────────────*/
 
 function TheBoys() {
-  const art = TOOLS.map((t) => t.image);
-
   return (
     <section className="px-5 py-24 sm:px-8">
       <div className="mx-auto max-w-[1180px]">
@@ -448,9 +440,9 @@ function TheBoys() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {art.map((src, i) => (
+            {TOOLS.map((t, i) => (
               <div
-                key={src}
+                key={t.image}
                 className="overflow-hidden rounded-[18px]"
                 style={{
                   aspectRatio: "1/1",
@@ -459,7 +451,7 @@ function TheBoys() {
                 }}
               >
                 <img
-                  src={src}
+                  src={t.image}
                   alt=""
                   loading="lazy"
                   className="h-full w-full object-cover"
@@ -483,8 +475,7 @@ function JoinBand() {
         style={{ background: "var(--lime)" }}
       >
         <h2
-          className="wordmark wordmark--dark glitch m-0"
-          data-text="Get in the Hood"
+          className="wordmark wordmark--dark m-0"
           style={{ fontSize: "clamp(2rem, 6.5vw, 3.6rem)", lineHeight: 1 }}
         >
           Get in the Hood
