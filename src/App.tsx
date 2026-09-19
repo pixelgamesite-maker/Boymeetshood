@@ -1,6 +1,5 @@
 import { Router as WouterRouter, Route, Switch, Link } from "wouter";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import BootSplash from "@/components/BootSplash";
 import Home from "@/pages/home";
 import Market from "@/pages/market";
 import About from "@/pages/about";
@@ -46,7 +45,6 @@ function App() {
   return (
     <div className="dark">
       <TooltipProvider>
-        <BootSplash />
         <WouterRouter>
           <Switch>
             <Route path="/" component={Home} />
