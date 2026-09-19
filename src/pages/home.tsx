@@ -484,7 +484,7 @@ function JoinBand() {
           className="mx-auto m-0 mt-5 max-w-[44ch] text-[16px] font-semibold leading-relaxed"
           style={{ color: "rgba(11,8,24,0.72)" }}
         >
-          Grab a Boy, then put him to work. Lending is live — the rest of the
+          Grab a Boy, then put him to work. Lending is live, the rest of the
           toolkit lands after mint.
         </p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
