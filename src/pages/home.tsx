@@ -117,7 +117,11 @@ function Hero() {
 
         <dl
           className="rise mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-[20px] sm:grid-cols-4"
-          style={{ background: "rgba(11,8,24,0.18)", animationDelay: "0.36s" }}
+          style={{
+            background: "var(--hairline)",
+            boxShadow: "0 18px 50px rgba(11,8,24,0.3)",
+            animationDelay: "0.36s",
+          }}
         >
           {(
             [
@@ -127,20 +131,20 @@ function Hero() {
               ["Lending", "Live"],
             ] as [string, string][]
           ).map(([label, value]) => (
-            <div key={label} className="px-5 py-5" style={{ background: "var(--lime)" }}>
+            <div key={label} className="px-5 py-5" style={{ background: "var(--ink-2)" }}>
               <dt
                 className="m-0 text-[11px] uppercase"
                 style={{
                   fontFamily: "var(--mono)",
                   letterSpacing: "0.14em",
-                  color: "rgba(11,8,24,0.55)",
+                  color: "var(--fg-faint)",
                 }}
               >
                 {label}
               </dt>
               <dd
                 className="m-0 mt-1.5 text-[16px] font-extrabold"
-                style={{ color: "var(--ink)" }}
+                style={{ color: "#fff" }}
               >
                 {value}
               </dd>
