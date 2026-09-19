@@ -61,11 +61,11 @@ function Hero() {
             style={{ animationDelay: "0.2s" }}
           >
             <Link
-              href="/p2p"
+              href="/about"
               className="inline-flex items-center justify-center rounded-full px-9 py-4 text-[15px] font-extrabold"
               style={{ background: "var(--ink)", color: "var(--lime)" }}
             >
-              Enter the Hood
+              About the Hood
             </Link>
             <a
               href={LINKS.opensea}
