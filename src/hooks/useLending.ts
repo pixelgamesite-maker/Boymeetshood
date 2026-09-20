@@ -12,28 +12,30 @@ import { wagmiConfig } from "@/lib/wagmi";
 import { CONTRACTS } from "@/lib/contracts";
 import { lendingAbi } from "@/lib/abis/lending";
 import { erc20Abi, erc721Abi } from "@/lib/abis/tokens";
-import type { Address, Loan, Offer, OwnedBoy } from "@/types/lending";
+import type {
+  Address,
+  Loan,
+  LoanRequest,
+  Offer,
+  OwnedBoy,
+} from "@/types/lending";
 
 /**
- * Every read and write against BoyMeetsHoodLending.
+ * Every read and write against BoyMeetsHoodLending v2.
  *
- * Reads are batched through Multicall3, which is deployed on Robinhood Chain,
- * so listing every offer costs one request rather than one per offer.
- *
- * The Boys collection is NOT ERC721Enumerable — tokenOfOwnerByIndex reverts —
- * so a wallet's tokens are found from Transfer logs and then confirmed with
- * ownerOf. The RPC serves logs from block 0 without a range cap, which is what
- * makes this possible without an indexer.
+ * Reads batch through Multicall3, which is deployed on Robinhood Chain.
+ * The collection is NOT ERC721Enumerable, so a wallet's Boys come from
+ * Transfer logs confirmed with ownerOf.
  */
 
-/** Deployment block. Starting the log scan here rather than 0 saves work. */
+/** Collection deployment block — where the log scan starts. */
 const DEPLOY_BLOCK = 62_915_406n;
 
 const TRANSFER_EVENT = parseAbiItem(
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 );
 
-/* ── Shared query shape ──────────────────────────────────────────────────*/
+/* ── Query plumbing ──────────────────────────────────────────────────────*/
 
 interface Query<T> {
   data: T | undefined;
@@ -60,23 +62,18 @@ function useQuery<T>(
       setLoading(false);
       return;
     }
-
     let cancelled = false;
     setLoading(true);
     setError(null);
 
     fetcher()
-      .then((result) => {
-        if (!cancelled) setData(result);
-      })
+      .then((r) => !cancelled && setData(r))
       .catch((e: unknown) => {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Couldn't reach the chain.");
         }
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .finally(() => !cancelled && setLoading(false));
 
     return () => {
       cancelled = true;
@@ -87,123 +84,172 @@ function useQuery<T>(
   return { data, loading, error, refetch };
 }
 
-/** The connected wallet, or undefined. */
 export function useMyAddress(): Address | undefined {
-  const { address } = useAccount();
-  return address;
+  return useAccount().address;
 }
 
-/* ── Reads ───────────────────────────────────────────────────────────────*/
+const escrow = { address: CONTRACTS.escrow, abi: lendingAbi } as const;
 
-type OfferTuple = readonly [
-  Address, bigint, number, number, bigint, number, bigint, boolean,
-];
-
-function toOffer(id: bigint, t: OfferTuple): Offer {
-  return {
-    id: id.toString(),
-    lender: t[0],
-    principal: t[1],
-    interestBps: t[2],
-    durationSecs: t[3],
-    collateral:
-      t[5] === 1 ? { kind: "tokens", tokenIds: [Number(t[6])] } : { kind: "any" },
-    createdAt: 0, // not stored on-chain; offers are sorted by id instead
-  };
+async function nextId(name: "nextRequestId" | "nextOfferId" | "nextLoanId") {
+  const n = await readContract(wagmiConfig, { ...escrow, functionName: name });
+  return Number(n) - 1;
 }
 
-/** Every offer currently open and takeable. */
-export function useOffers(): Query<Offer[]> {
+/* ── Requests ────────────────────────────────────────────────────────────*/
+
+type RequestTuple = readonly [Address, bigint, number, number, bigint, boolean];
+
+/** Every open request on the book. */
+export function useRequests(): Query<LoanRequest[]> {
   return useQuery(async () => {
-    const next = await readContract(wagmiConfig, {
-      address: CONTRACTS.escrow,
-      abi: lendingAbi,
-      functionName: "nextOfferId",
-    });
-
-    const count = Number(next) - 1;
+    const count = await nextId("nextRequestId");
     if (count <= 0) return [];
 
     const ids = Array.from({ length: count }, (_, i) => BigInt(i + 1));
-    const results = await readContracts(wagmiConfig, {
+
+    const rows = (await readContracts(wagmiConfig, {
       allowFailure: false,
       contracts: ids.map((id) => ({
-        address: CONTRACTS.escrow,
-        abi: lendingAbi,
-        functionName: "offers" as const,
+        ...escrow,
+        functionName: "requests" as const,
         args: [id] as const,
       })),
-    });
+    })) as unknown as RequestTuple[];
 
-    const now = BigInt(Math.floor(Date.now() / 1000));
+    const live = rows
+      .map((t, i) => ({ t, id: ids[i] }))
+      .filter(({ t }) => t[5]); // active
 
-    return (results as unknown as OfferTuple[])
-      .map((tuple, i) => ({ tuple, id: ids[i] }))
-      .filter(({ tuple }) => {
-        const active = tuple[7];
-        const expiresAt = tuple[4];
-        return active && (expiresAt === 0n || now <= expiresAt);
-      })
-      .map(({ tuple, id }) => toOffer(id, tuple))
-      .reverse(); // newest first
+    if (live.length === 0) return [];
+
+    const tokenLists = (await readContracts(wagmiConfig, {
+      allowFailure: false,
+      contracts: live.map(({ id }) => ({
+        ...escrow,
+        functionName: "requestTokens" as const,
+        args: [id] as const,
+      })),
+    })) as unknown as bigint[][];
+
+    const now = Math.floor(Date.now() / 1000);
+
+    return live
+      .map(({ t, id }, i) => ({
+        id: id.toString(),
+        borrower: t[0],
+        principal: t[1],
+        interestBps: t[2],
+        durationSecs: t[3],
+        expiresAt: Number(t[4]),
+        tokenIds: tokenLists[i].map(Number),
+      }))
+      .filter((r) => r.expiresAt === 0 || now <= r.expiresAt)
+      .reverse();
   }, []);
 }
 
-type LoanTuple = readonly [
-  Address, Address, bigint, bigint, bigint, bigint, bigint, bigint, number,
+/* ── Offers ──────────────────────────────────────────────────────────────*/
+
+type OfferTuple = readonly [
+  Address, bigint, number, number, bigint, number, boolean,
 ];
 
-function toLoan(id: bigint, t: LoanTuple): Loan {
-  return {
-    id: id.toString(),
-    offerId: "",
-    lender: t[0],
-    borrower: t[1],
-    tokenId: Number(t[2]),
-    principal: t[3],
-    interest: t[4] - t[3],
-    repayAmount: t[4] + t[5], // repayAmount + fee, what the borrower pays
-    startedAt: Number(t[6]),
-    dueAt: Number(t[7]),
-    status: t[8] === 2 ? "repaid" : t[8] === 3 ? "defaulted" : "active",
-  };
+/** Every open offer on the book. */
+export function useOffers(): Query<Offer[]> {
+  return useQuery(async () => {
+    const count = await nextId("nextOfferId");
+    if (count <= 0) return [];
+
+    const ids = Array.from({ length: count }, (_, i) => BigInt(i + 1));
+    const rows = (await readContracts(wagmiConfig, {
+      allowFailure: false,
+      contracts: ids.map((id) => ({
+        ...escrow,
+        functionName: "offers" as const,
+        args: [id] as const,
+      })),
+    })) as unknown as OfferTuple[];
+
+    const now = Math.floor(Date.now() / 1000);
+
+    return rows
+      .map((t, i) => ({
+        id: ids[i].toString(),
+        lender: t[0],
+        principal: t[1],
+        interestBps: t[2],
+        durationSecs: t[3],
+        expiresAt: Number(t[4]),
+        tokenCount: t[5],
+        active: t[6],
+      }))
+      .filter((o) => o.active && (o.expiresAt === 0 || now <= o.expiresAt))
+      .map(({ active: _active, ...o }) => o)
+      .reverse();
+  }, []);
 }
 
-/** Every loan touching the connected wallet, as borrower or lender. */
+/* ── Loans ───────────────────────────────────────────────────────────────*/
+
+type LoanTuple = readonly [
+  Address, Address, bigint, bigint, bigint, bigint, bigint, number,
+];
+
+/** Every loan touching the connected wallet. */
 export function useMyLoans(): Query<Loan[]> {
   const me = useMyAddress();
 
   return useQuery(
     async () => {
-      const next = await readContract(wagmiConfig, {
-        address: CONTRACTS.escrow,
-        abi: lendingAbi,
-        functionName: "nextLoanId",
-      });
-
-      const count = Number(next) - 1;
+      const count = await nextId("nextLoanId");
       if (count <= 0) return [];
 
       const ids = Array.from({ length: count }, (_, i) => BigInt(i + 1));
-      const results = await readContracts(wagmiConfig, {
+      const rows = (await readContracts(wagmiConfig, {
         allowFailure: false,
         contracts: ids.map((id) => ({
-          address: CONTRACTS.escrow,
-          abi: lendingAbi,
+          ...escrow,
           functionName: "loans" as const,
           args: [id] as const,
         })),
-      });
+      })) as unknown as LoanTuple[];
 
       const mine = me?.toLowerCase();
-
-      return (results as unknown as LoanTuple[])
-        .map((tuple, i) => toLoan(ids[i], tuple))
+      const relevant = rows
+        .map((t, i) => ({ t, id: ids[i] }))
         .filter(
-          (loan) =>
-            loan.lender.toLowerCase() === mine ||
-            loan.borrower.toLowerCase() === mine,
-        )
+          ({ t }) =>
+            t[0].toLowerCase() === mine || t[1].toLowerCase() === mine,
+        );
+
+      if (relevant.length === 0) return [];
+
+      const tokenLists = (await readContracts(wagmiConfig, {
+        allowFailure: false,
+        contracts: relevant.map(({ id }) => ({
+          ...escrow,
+          functionName: "loanTokens" as const,
+          args: [id] as const,
+        })),
+      })) as unknown as bigint[][];
+
+      return relevant
+        .map(({ t, id }, i) => ({
+          id: id.toString(),
+          lender: t[0],
+          borrower: t[1],
+          principal: t[2],
+          repayAmount: t[3],
+          fee: t[4],
+          totalDue: t[3] + t[4],
+          startedAt: Number(t[5]),
+          dueAt: Number(t[6]),
+          status:
+            t[7] === 2 ? ("repaid" as const)
+            : t[7] === 3 ? ("defaulted" as const)
+            : ("active" as const),
+          tokenIds: tokenLists[i].map(Number),
+        }))
         .reverse();
     },
     [me],
@@ -211,12 +257,9 @@ export function useMyLoans(): Query<Loan[]> {
   );
 }
 
-/**
- * Boys held by the connected wallet.
- *
- * The collection isn't Enumerable, so: collect every tokenId ever transferred
- * TO this address from logs, then confirm with ownerOf which are still held.
- */
+/* ── Wallet ──────────────────────────────────────────────────────────────*/
+
+/** Boys held by the connected wallet and free to pledge. */
 export function useMyBoys(): Query<OwnedBoy[]> {
   const me = useMyAddress();
 
@@ -234,11 +277,10 @@ export function useMyBoys(): Query<OwnedBoy[]> {
       });
 
       const candidates = [
-        ...new Set(logs.map((log) => log.args.tokenId as bigint)),
+        ...new Set(logs.map((l: { args: { tokenId?: bigint } }) => l.args.tokenId as bigint)),
       ];
       if (candidates.length === 0) return [];
 
-      // A token may have been transferred away again — confirm each.
       const owners = await readContracts(wagmiConfig, {
         allowFailure: true,
         contracts: candidates.map((tokenId) => ({
@@ -249,18 +291,14 @@ export function useMyBoys(): Query<OwnedBoy[]> {
         })),
       });
 
-      const held = candidates.filter(
-        (_, i) =>
-          owners[i].status === "success" &&
-          (owners[i].result as Address).toLowerCase() === me.toLowerCase(),
-      );
-
-      // A Boy in escrow is owned by the contract, so anything still held is
-      // free to pledge.
-      return held.map((tokenId) => ({
-        tokenId: Number(tokenId),
-        available: true,
-      }));
+      return candidates
+        .filter(
+          (_, i) =>
+            owners[i].status === "success" &&
+            (owners[i].result as Address).toLowerCase() === me.toLowerCase(),
+        )
+        .map((tokenId) => ({ tokenId: Number(tokenId) }))
+        .sort((a, b) => a.tokenId - b.tokenId);
     },
     [me],
     Boolean(me),
@@ -274,8 +312,7 @@ export function useOwed(): Query<bigint> {
   return useQuery(
     async () =>
       readContract(wagmiConfig, {
-        address: CONTRACTS.escrow,
-        abi: lendingAbi,
+        ...escrow,
         functionName: "owed",
         args: [me as Address],
       }),
@@ -293,22 +330,23 @@ interface Action<Args extends unknown[]> {
   reset: () => void;
 }
 
-/** Turn a chain revert into something a person can read. */
 function readableError(e: unknown): string {
   const raw = e instanceof Error ? e.message : String(e);
 
   if (/User rejected|denied transaction/i.test(raw)) return "You cancelled it.";
-  if (/OfferInactive/.test(raw)) return "That offer is already gone.";
-  if (/OfferExpired/.test(raw)) return "That offer has expired.";
-  if (/SelfBorrow/.test(raw)) return "You can't take your own offer.";
-  if (/NotTokenOwner/.test(raw)) return "You don't own that Boy.";
-  if (/TokenNotEligible/.test(raw)) return "That Boy isn't accepted here.";
+  if (/Inactive/.test(raw)) return "That's already gone.";
+  if (/Expired/.test(raw)) return "That has expired.";
+  if (/SelfDeal/.test(raw)) return "You can't take your own post.";
+  if (/NotTokenOwner/.test(raw)) return "You don't own one of those Boys.";
+  if (/WrongTokenCount/.test(raw)) return "Wrong number of Boys for this offer.";
+  if (/BadBundle/.test(raw)) return "Pick between 1 and 20 Boys.";
   if (/DeadlinePassed/.test(raw)) return "Past the deadline — this loan defaulted.";
   if (/DeadlineNotPassed/.test(raw)) return "Not past the deadline yet.";
   if (/LoanNotActive/.test(raw)) return "That loan is already closed.";
+  if (/NotOwnerOfPost/.test(raw)) return "That isn't yours to cancel.";
   if (/NothingOwed/.test(raw)) return "Nothing to withdraw.";
   if (/insufficient funds/i.test(raw)) return "Not enough ETH for gas.";
-  if (/transfer amount exceeds balance/i.test(raw)) return "Not enough USDG.";
+  if (/exceeds balance/i.test(raw)) return "Not enough USDG.";
 
   return "Transaction failed.";
 }
@@ -339,93 +377,160 @@ function useAction<Args extends unknown[]>(
   return { run, pending, error, reset: useCallback(() => setError(null), []) };
 }
 
-async function send(hash: `0x${string}`) {
-  return waitForTransactionReceipt(wagmiConfig, { hash });
-}
+const send = (hash: `0x${string}`) =>
+  waitForTransactionReceipt(wagmiConfig, { hash });
 
-/** Approve USDG if the current allowance is short. */
-async function ensureUsdgAllowance(owner: Address, amount: bigint) {
+async function ensureUsdg(owner: Address, amount: bigint) {
   const allowance = await readContract(wagmiConfig, {
     address: CONTRACTS.usdg,
     abi: erc20Abi,
     functionName: "allowance",
     args: [owner, CONTRACTS.escrow],
   });
-
   if (allowance >= amount) return;
 
-  const hash = await writeContract(wagmiConfig, {
-    address: CONTRACTS.usdg,
-    abi: erc20Abi,
-    functionName: "approve",
-    args: [CONTRACTS.escrow, amount],
-  });
-  await send(hash);
+  await send(
+    await writeContract(wagmiConfig, {
+      address: CONTRACTS.usdg,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [CONTRACTS.escrow, amount],
+    }),
+  );
 }
 
-/** Approve the escrow for the collection if it isn't already. */
-async function ensureBoysApproval(owner: Address) {
+async function ensureBoys(owner: Address) {
   const approved = await readContract(wagmiConfig, {
     address: CONTRACTS.boys,
     abi: erc721Abi,
     functionName: "isApprovedForAll",
     args: [owner, CONTRACTS.escrow],
   });
-
   if (approved) return;
 
-  const hash = await writeContract(wagmiConfig, {
-    address: CONTRACTS.boys,
-    abi: erc721Abi,
-    functionName: "setApprovalForAll",
-    args: [CONTRACTS.escrow, true],
+  await send(
+    await writeContract(wagmiConfig, {
+      address: CONTRACTS.boys,
+      abi: erc721Abi,
+      functionName: "setApprovalForAll",
+      args: [CONTRACTS.escrow, true],
+    }),
+  );
+}
+
+export interface RequestInput {
+  tokenIds: number[];
+  principal: bigint;
+  interestBps: number;
+  durationSecs: number;
+}
+
+/** Borrower posts a request. Needs Boys and gas — no USDG. */
+export function useCreateRequest() {
+  const me = useMyAddress();
+  return useAction(async (input: RequestInput) => {
+    if (!me) throw new Error("Connect a wallet first.");
+    await ensureBoys(me);
+
+    return send(
+      await writeContract(wagmiConfig, {
+        ...escrow,
+        functionName: "createRequest",
+        args: [
+          input.tokenIds.map((id) => BigInt(id)),
+          input.principal,
+          input.interestBps,
+          input.durationSecs,
+          0n,
+        ],
+      }),
+    );
   });
-  await send(hash);
+}
+
+export function useCancelRequest() {
+  return useAction(async (requestId: string) =>
+    send(
+      await writeContract(wagmiConfig, {
+        ...escrow,
+        functionName: "cancelRequest",
+        args: [BigInt(requestId)],
+      }),
+    ),
+  );
+}
+
+/** Lender funds someone's request. */
+export function useFundRequest() {
+  const me = useMyAddress();
+  return useAction(async (requestId: string, principal: bigint) => {
+    if (!me) throw new Error("Connect a wallet first.");
+    await ensureUsdg(me, principal);
+
+    return send(
+      await writeContract(wagmiConfig, {
+        ...escrow,
+        functionName: "fundRequest",
+        args: [BigInt(requestId)],
+      }),
+    );
+  });
+}
+
+export interface OfferInput {
+  principal: bigint;
+  interestBps: number;
+  durationSecs: number;
+  tokenCount: number;
 }
 
 export function useCreateOffer() {
   const me = useMyAddress();
-  return useAction(
-    async (input: {
-      principal: bigint;
-      interestBps: number;
-      durationSecs: number;
-      expiresAt?: number;
-    }) => {
-      if (!me) throw new Error("Connect a wallet first.");
-      await ensureUsdgAllowance(me, input.principal);
+  return useAction(async (input: OfferInput) => {
+    if (!me) throw new Error("Connect a wallet first.");
+    await ensureUsdg(me, input.principal);
 
-      const hash = await writeContract(wagmiConfig, {
-        address: CONTRACTS.escrow,
-        abi: lendingAbi,
+    return send(
+      await writeContract(wagmiConfig, {
+        ...escrow,
         functionName: "createOffer",
         args: [
           input.principal,
           input.interestBps,
           input.durationSecs,
-          BigInt(input.expiresAt ?? 0),
-          0, // Collateral.Any
           0n,
+          input.tokenCount,
         ],
-      });
-      return send(hash);
-    },
+      }),
+    );
+  });
+}
+
+export function useCancelOffer() {
+  return useAction(async (offerId: string) =>
+    send(
+      await writeContract(wagmiConfig, {
+        ...escrow,
+        functionName: "cancelOffer",
+        args: [BigInt(offerId)],
+      }),
+    ),
   );
 }
 
 export function useTakeOffer() {
   const me = useMyAddress();
-  return useAction(async (offerId: string, tokenId: number) => {
+  return useAction(async (offerId: string, tokenIds: number[]) => {
     if (!me) throw new Error("Connect a wallet first.");
-    await ensureBoysApproval(me);
+    await ensureBoys(me);
 
-    const hash = await writeContract(wagmiConfig, {
-      address: CONTRACTS.escrow,
-      abi: lendingAbi,
-      functionName: "takeOffer",
-      args: [BigInt(offerId), BigInt(tokenId)],
-    });
-    return send(hash);
+    return send(
+      await writeContract(wagmiConfig, {
+        ...escrow,
+        functionName: "takeOffer",
+        args: [BigInt(offerId), tokenIds.map((id) => BigInt(id))],
+      }),
+    );
   });
 }
 
@@ -435,69 +540,52 @@ export function useRepayLoan() {
     if (!me) throw new Error("Connect a wallet first.");
 
     const due = await readContract(wagmiConfig, {
-      address: CONTRACTS.escrow,
-      abi: lendingAbi,
+      ...escrow,
       functionName: "totalDue",
       args: [BigInt(loanId)],
     });
-    await ensureUsdgAllowance(me, due);
+    await ensureUsdg(me, due);
 
-    const hash = await writeContract(wagmiConfig, {
-      address: CONTRACTS.escrow,
-      abi: lendingAbi,
-      functionName: "repay",
-      args: [BigInt(loanId)],
-    });
-    return send(hash);
-  });
-}
-
-export function useCancelOffer() {
-  return useAction(async (offerId: string) => {
-    const hash = await writeContract(wagmiConfig, {
-      address: CONTRACTS.escrow,
-      abi: lendingAbi,
-      functionName: "cancelOffer",
-      args: [BigInt(offerId)],
-    });
-    return send(hash);
+    return send(
+      await writeContract(wagmiConfig, {
+        ...escrow,
+        functionName: "repay",
+        args: [BigInt(loanId)],
+      }),
+    );
   });
 }
 
 export function useClaimCollateral() {
-  return useAction(async (loanId: string) => {
-    const hash = await writeContract(wagmiConfig, {
-      address: CONTRACTS.escrow,
-      abi: lendingAbi,
-      functionName: "claimDefault",
-      args: [BigInt(loanId)],
-    });
-    return send(hash);
-  });
+  return useAction(async (loanId: string) =>
+    send(
+      await writeContract(wagmiConfig, {
+        ...escrow,
+        functionName: "claimDefault",
+        args: [BigInt(loanId)],
+      }),
+    ),
+  );
 }
 
-/** Pull credited USDG out of the contract. */
 export function useWithdraw() {
-  return useAction(async () => {
-    const hash = await writeContract(wagmiConfig, {
-      address: CONTRACTS.escrow,
-      abi: lendingAbi,
-      functionName: "withdraw",
-    });
-    return send(hash);
-  });
+  return useAction(async () =>
+    send(
+      await writeContract(wagmiConfig, {
+        ...escrow,
+        functionName: "withdraw",
+      }),
+    ),
+  );
 }
 
 /* ── Countdown ───────────────────────────────────────────────────────────*/
 
-/** Unix seconds, ticking once a second. Drives every deadline on the page. */
 export function useNow(intervalMs = 1000): number {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
-
   useEffect(() => {
     const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), intervalMs);
     return () => clearInterval(id);
   }, [intervalMs]);
-
   return now;
 }
