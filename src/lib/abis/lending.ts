@@ -1,6 +1,7 @@
 /**
- * BoyMeetsHoodLending v2 — 0x5be2edeeb3d76f1214De7ee35c52d3B9bD5f6762
- * Status enum: 0 None, 1 Active, 2 Repaid, 3 Defaulted
+ * BoyMeetsHoodLending v3 — 0x912de88eAb23c048E43d112396211a007D047d65
+ * Currency enum: 0 USDG, 1 ETH
+ * Status enum:   0 None, 1 Active, 2 Repaid, 3 Defaulted
  */
 export const lendingAbi = [
   /* ── Reads ────────────────────────────────────────────────────────────── */
@@ -15,6 +16,7 @@ export const lendingAbi = [
       { name: "interestBps", type: "uint16" },
       { name: "duration", type: "uint32" },
       { name: "expiresAt", type: "uint64" },
+      { name: "currency", type: "uint8" },
       { name: "active", type: "bool" },
     ],
   },
@@ -30,6 +32,7 @@ export const lendingAbi = [
       { name: "duration", type: "uint32" },
       { name: "expiresAt", type: "uint64" },
       { name: "tokenCount", type: "uint8" },
+      { name: "currency", type: "uint8" },
       { name: "active", type: "bool" },
     ],
   },
@@ -46,6 +49,7 @@ export const lendingAbi = [
       { name: "fee", type: "uint128" },
       { name: "startedAt", type: "uint64" },
       { name: "dueAt", type: "uint64" },
+      { name: "currency", type: "uint8" },
       { name: "status", type: "uint8" },
     ],
   },
@@ -65,7 +69,14 @@ export const lendingAbi = [
   },
   {
     type: "function",
-    name: "owed",
+    name: "owedUsdg",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "owedEth",
     stateMutability: "view",
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ type: "uint256" }],
@@ -98,13 +109,6 @@ export const lendingAbi = [
     inputs: [{ name: "loanId", type: "uint256" }],
     outputs: [{ type: "uint256" }],
   },
-  {
-    type: "function",
-    name: "MAX_BUNDLE",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "uint8" }],
-  },
 
   /* ── Borrower side ────────────────────────────────────────────────────── */
   {
@@ -117,6 +121,7 @@ export const lendingAbi = [
       { name: "interestBps", type: "uint16" },
       { name: "duration", type: "uint32" },
       { name: "expiresAt", type: "uint64" },
+      { name: "currency", type: "uint8" },
     ],
     outputs: [{ name: "requestId", type: "uint256" }],
   },
@@ -140,7 +145,7 @@ export const lendingAbi = [
   {
     type: "function",
     name: "repay",
-    stateMutability: "nonpayable",
+    stateMutability: "payable",
     inputs: [{ name: "loanId", type: "uint256" }],
     outputs: [],
   },
@@ -149,20 +154,21 @@ export const lendingAbi = [
   {
     type: "function",
     name: "fundRequest",
-    stateMutability: "nonpayable",
+    stateMutability: "payable",
     inputs: [{ name: "requestId", type: "uint256" }],
     outputs: [{ name: "loanId", type: "uint256" }],
   },
   {
     type: "function",
     name: "createOffer",
-    stateMutability: "nonpayable",
+    stateMutability: "payable",
     inputs: [
       { name: "principal", type: "uint128" },
       { name: "interestBps", type: "uint16" },
       { name: "duration", type: "uint32" },
       { name: "expiresAt", type: "uint64" },
       { name: "tokenCount", type: "uint8" },
+      { name: "currency", type: "uint8" },
     ],
     outputs: [{ name: "offerId", type: "uint256" }],
   },
@@ -184,7 +190,7 @@ export const lendingAbi = [
     type: "function",
     name: "withdraw",
     stateMutability: "nonpayable",
-    inputs: [],
+    inputs: [{ name: "currency", type: "uint8" }],
     outputs: [{ name: "amount", type: "uint256" }],
   },
 ] as const;
