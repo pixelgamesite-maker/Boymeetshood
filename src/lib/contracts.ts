@@ -2,8 +2,6 @@ import type { Address } from "@/types/lending";
 
 /** Every contract address the app touches. Nothing else hardcodes one. */
 
-const UNSET = "0x0000000000000000000000000000000000000000" as const;
-
 export const CONTRACTS = {
   /** The Boys ERC-721. Confirmed: totalSupply() returns 2666. */
   boys: "0xB036c31a01d7D056f70f339a299111775613cbac" as Address,
@@ -14,14 +12,9 @@ export const CONTRACTS = {
   /** Receives the protocol fee on every repayment. */
   treasury: "0x05a04a21A20905cF37AE46fBc2a83A3774dbffD2" as Address,
 
-  /** BoyMeetsHoodLending, deployed in block 67935354. */
-  escrow: "0x2d8314C63d1151a028fD224bdF88A46369A40b94" as Address,
+  /** BoyMeetsHoodLending v2, deployed in block 68208840. */
+  escrow: "0x5be2edeeb3d76f1214De7ee35c52d3B9bD5f6762" as Address,
 } as const;
 
-export const isSet = (addr: Address) => addr !== UNSET;
-
-export const READY = {
-  boys: isSet(CONTRACTS.boys),
-  usdg: isSet(CONTRACTS.usdg),
-  lending: isSet(CONTRACTS.escrow),
-} as const;
+/** Largest bundle the contract accepts. Mirrors MAX_BUNDLE. */
+export const MAX_BUNDLE = 20;
