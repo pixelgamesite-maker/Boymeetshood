@@ -17,7 +17,7 @@ import {BoyMeetsHoodLending} from "../contracts/BoyMeetsHoodLending.sol";
  */
 contract Deploy is Script {
     // The Boys ERC-721.
-    address constant COLLECTION = 0xb036C31a01D7d056F70F339A299111775613cbAC;
+    address constant COLLECTION = 0xB036c31a01d7D056f70f339a299111775613cbac;
 
     // USDG (Global Dollar) on Robinhood Chain. 6 decimals.
     address constant CURRENCY = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
