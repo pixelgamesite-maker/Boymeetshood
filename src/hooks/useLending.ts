@@ -12,28 +12,25 @@ import { wagmiConfig } from "@/lib/wagmi";
 import { CONTRACTS } from "@/lib/contracts";
 import { lendingAbi } from "@/lib/abis/lending";
 import { erc20Abi, erc721Abi } from "@/lib/abis/tokens";
-import type {
-  Address,
-  Loan,
-  LoanRequest,
-  Offer,
-  OwnedBoy,
+import {
+  currencyFromEnum,
+  currencyToEnum,
+  type Address,
+  type Currency,
+  type Loan,
+  type LoanRequest,
+  type Offer,
+  type OwnedBoy,
 } from "@/types/lending";
 
-/**
- * Every read and write against BoyMeetsHoodLending v2.
- *
- * Reads batch through Multicall3, which is deployed on Robinhood Chain.
- * The collection is NOT ERC721Enumerable, so a wallet's Boys come from
- * Transfer logs confirmed with ownerOf.
- */
-
-/** Collection deployment block — where the log scan starts. */
+/** Collection deployment block — where the Transfer log scan starts. */
 const DEPLOY_BLOCK = 62_915_406n;
 
 const TRANSFER_EVENT = parseAbiItem(
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 );
+
+const escrow = { address: CONTRACTS.escrow, abi: lendingAbi } as const;
 
 /* ── Query plumbing ──────────────────────────────────────────────────────*/
 
@@ -88,25 +85,23 @@ export function useMyAddress(): Address | undefined {
   return useAccount().address;
 }
 
-const escrow = { address: CONTRACTS.escrow, abi: lendingAbi } as const;
-
-async function nextId(name: "nextRequestId" | "nextOfferId" | "nextLoanId") {
+async function countOf(name: "nextRequestId" | "nextOfferId" | "nextLoanId") {
   const n = await readContract(wagmiConfig, { ...escrow, functionName: name });
   return Number(n) - 1;
 }
 
 /* ── Requests ────────────────────────────────────────────────────────────*/
 
-type RequestTuple = readonly [Address, bigint, number, number, bigint, boolean];
+type RequestTuple = readonly [
+  Address, bigint, number, number, bigint, number, boolean,
+];
 
-/** Every open request on the book. */
 export function useRequests(): Query<LoanRequest[]> {
   return useQuery(async () => {
-    const count = await nextId("nextRequestId");
+    const count = await countOf("nextRequestId");
     if (count <= 0) return [];
 
     const ids = Array.from({ length: count }, (_, i) => BigInt(i + 1));
-
     const rows = (await readContracts(wagmiConfig, {
       allowFailure: false,
       contracts: ids.map((id) => ({
@@ -116,10 +111,7 @@ export function useRequests(): Query<LoanRequest[]> {
       })),
     })) as unknown as RequestTuple[];
 
-    const live = rows
-      .map((t, i) => ({ t, id: ids[i] }))
-      .filter(({ t }) => t[5]); // active
-
+    const live = rows.map((t, i) => ({ t, id: ids[i] })).filter(({ t }) => t[6]);
     if (live.length === 0) return [];
 
     const tokenLists = (await readContracts(wagmiConfig, {
@@ -141,6 +133,7 @@ export function useRequests(): Query<LoanRequest[]> {
         interestBps: t[2],
         durationSecs: t[3],
         expiresAt: Number(t[4]),
+        currency: currencyFromEnum(t[5]),
         tokenIds: tokenLists[i].map(Number),
       }))
       .filter((r) => r.expiresAt === 0 || now <= r.expiresAt)
@@ -151,13 +144,12 @@ export function useRequests(): Query<LoanRequest[]> {
 /* ── Offers ──────────────────────────────────────────────────────────────*/
 
 type OfferTuple = readonly [
-  Address, bigint, number, number, bigint, number, boolean,
+  Address, bigint, number, number, bigint, number, number, boolean,
 ];
 
-/** Every open offer on the book. */
 export function useOffers(): Query<Offer[]> {
   return useQuery(async () => {
-    const count = await nextId("nextOfferId");
+    const count = await countOf("nextOfferId");
     if (count <= 0) return [];
 
     const ids = Array.from({ length: count }, (_, i) => BigInt(i + 1));
@@ -181,10 +173,11 @@ export function useOffers(): Query<Offer[]> {
         durationSecs: t[3],
         expiresAt: Number(t[4]),
         tokenCount: t[5],
-        active: t[6],
+        currency: currencyFromEnum(t[6]),
+        active: t[7],
       }))
       .filter((o) => o.active && (o.expiresAt === 0 || now <= o.expiresAt))
-      .map(({ active: _active, ...o }) => o)
+      .map(({ active: _a, ...o }) => o)
       .reverse();
   }, []);
 }
@@ -192,16 +185,15 @@ export function useOffers(): Query<Offer[]> {
 /* ── Loans ───────────────────────────────────────────────────────────────*/
 
 type LoanTuple = readonly [
-  Address, Address, bigint, bigint, bigint, bigint, bigint, number,
+  Address, Address, bigint, bigint, bigint, bigint, bigint, number, number,
 ];
 
-/** Every loan touching the connected wallet. */
 export function useMyLoans(): Query<Loan[]> {
   const me = useMyAddress();
 
   return useQuery(
     async () => {
-      const count = await nextId("nextLoanId");
+      const count = await countOf("nextLoanId");
       if (count <= 0) return [];
 
       const ids = Array.from({ length: count }, (_, i) => BigInt(i + 1));
@@ -218,8 +210,7 @@ export function useMyLoans(): Query<Loan[]> {
       const relevant = rows
         .map((t, i) => ({ t, id: ids[i] }))
         .filter(
-          ({ t }) =>
-            t[0].toLowerCase() === mine || t[1].toLowerCase() === mine,
+          ({ t }) => t[0].toLowerCase() === mine || t[1].toLowerCase() === mine,
         );
 
       if (relevant.length === 0) return [];
@@ -244,9 +235,10 @@ export function useMyLoans(): Query<Loan[]> {
           totalDue: t[3] + t[4],
           startedAt: Number(t[5]),
           dueAt: Number(t[6]),
+          currency: currencyFromEnum(t[7]),
           status:
-            t[7] === 2 ? ("repaid" as const)
-            : t[7] === 3 ? ("defaulted" as const)
+            t[8] === 2 ? ("repaid" as const)
+            : t[8] === 3 ? ("defaulted" as const)
             : ("active" as const),
           tokenIds: tokenLists[i].map(Number),
         }))
@@ -259,7 +251,6 @@ export function useMyLoans(): Query<Loan[]> {
 
 /* ── Wallet ──────────────────────────────────────────────────────────────*/
 
-/** Boys held by the connected wallet and free to pledge. */
 export function useMyBoys(): Query<OwnedBoy[]> {
   const me = useMyAddress();
 
@@ -277,7 +268,9 @@ export function useMyBoys(): Query<OwnedBoy[]> {
       });
 
       const candidates = [
-        ...new Set(logs.map((l: { args: { tokenId?: bigint } }) => l.args.tokenId as bigint)),
+        ...new Set(
+          logs.map((l: { args: { tokenId?: bigint } }) => l.args.tokenId as bigint),
+        ),
       ];
       if (candidates.length === 0) return [];
 
@@ -305,17 +298,22 @@ export function useMyBoys(): Query<OwnedBoy[]> {
   );
 }
 
-/** USDG credited to the connected wallet, waiting to be withdrawn. */
-export function useOwed(): Query<bigint> {
+/** Credited balances in both currencies. */
+export function useOwed(): Query<{ usdg: bigint; eth: bigint }> {
   const me = useMyAddress();
 
   return useQuery(
-    async () =>
-      readContract(wagmiConfig, {
-        ...escrow,
-        functionName: "owed",
-        args: [me as Address],
-      }),
+    async () => {
+      const [usdg, eth] = (await readContracts(wagmiConfig, {
+        allowFailure: false,
+        contracts: [
+          { ...escrow, functionName: "owedUsdg" as const, args: [me as Address] },
+          { ...escrow, functionName: "owedEth" as const, args: [me as Address] },
+        ],
+      })) as unknown as [bigint, bigint];
+
+      return { usdg, eth };
+    },
     [me],
     Boolean(me),
   );
@@ -334,6 +332,7 @@ function readableError(e: unknown): string {
   const raw = e instanceof Error ? e.message : String(e);
 
   if (/User rejected|denied transaction/i.test(raw)) return "You cancelled it.";
+  if (/BadValue/.test(raw)) return "Wrong amount sent. Try again.";
   if (/Inactive/.test(raw)) return "That's already gone.";
   if (/Expired/.test(raw)) return "That has expired.";
   if (/SelfDeal/.test(raw)) return "You can't take your own post.";
@@ -345,7 +344,7 @@ function readableError(e: unknown): string {
   if (/LoanNotActive/.test(raw)) return "That loan is already closed.";
   if (/NotOwnerOfPost/.test(raw)) return "That isn't yours to cancel.";
   if (/NothingOwed/.test(raw)) return "Nothing to withdraw.";
-  if (/insufficient funds/i.test(raw)) return "Not enough ETH for gas.";
+  if (/insufficient funds/i.test(raw)) return "Not enough ETH in your wallet.";
   if (/exceeds balance/i.test(raw)) return "Not enough USDG.";
 
   return "Transaction failed.";
@@ -380,6 +379,7 @@ function useAction<Args extends unknown[]>(
 const send = (hash: `0x${string}`) =>
   waitForTransactionReceipt(wagmiConfig, { hash });
 
+/** USDG needs an allowance; ETH rides along as msg.value. */
 async function ensureUsdg(owner: Address, amount: bigint) {
   const allowance = await readContract(wagmiConfig, {
     address: CONTRACTS.usdg,
@@ -423,9 +423,9 @@ export interface RequestInput {
   principal: bigint;
   interestBps: number;
   durationSecs: number;
+  currency: Currency;
 }
 
-/** Borrower posts a request. Needs Boys and gas — no USDG. */
 export function useCreateRequest() {
   const me = useMyAddress();
   return useAction(async (input: RequestInput) => {
@@ -437,11 +437,12 @@ export function useCreateRequest() {
         ...escrow,
         functionName: "createRequest",
         args: [
-          input.tokenIds.map((id) => BigInt(id)),
+          input.tokenIds.map(BigInt),
           input.principal,
           input.interestBps,
           input.durationSecs,
           0n,
+          currencyToEnum(input.currency),
         ],
       }),
     );
@@ -460,21 +461,23 @@ export function useCancelRequest() {
   );
 }
 
-/** Lender funds someone's request. */
 export function useFundRequest() {
   const me = useMyAddress();
-  return useAction(async (requestId: string, principal: bigint) => {
-    if (!me) throw new Error("Connect a wallet first.");
-    await ensureUsdg(me, principal);
+  return useAction(
+    async (requestId: string, principal: bigint, currency: Currency) => {
+      if (!me) throw new Error("Connect a wallet first.");
+      if (currency === "usdg") await ensureUsdg(me, principal);
 
-    return send(
-      await writeContract(wagmiConfig, {
-        ...escrow,
-        functionName: "fundRequest",
-        args: [BigInt(requestId)],
-      }),
-    );
-  });
+      return send(
+        await writeContract(wagmiConfig, {
+          ...escrow,
+          functionName: "fundRequest",
+          args: [BigInt(requestId)],
+          value: currency === "eth" ? principal : 0n,
+        }),
+      );
+    },
+  );
 }
 
 export interface OfferInput {
@@ -482,13 +485,14 @@ export interface OfferInput {
   interestBps: number;
   durationSecs: number;
   tokenCount: number;
+  currency: Currency;
 }
 
 export function useCreateOffer() {
   const me = useMyAddress();
   return useAction(async (input: OfferInput) => {
     if (!me) throw new Error("Connect a wallet first.");
-    await ensureUsdg(me, input.principal);
+    if (input.currency === "usdg") await ensureUsdg(me, input.principal);
 
     return send(
       await writeContract(wagmiConfig, {
@@ -500,7 +504,9 @@ export function useCreateOffer() {
           input.durationSecs,
           0n,
           input.tokenCount,
+          currencyToEnum(input.currency),
         ],
+        value: input.currency === "eth" ? input.principal : 0n,
       }),
     );
   });
@@ -528,7 +534,7 @@ export function useTakeOffer() {
       await writeContract(wagmiConfig, {
         ...escrow,
         functionName: "takeOffer",
-        args: [BigInt(offerId), tokenIds.map((id) => BigInt(id))],
+        args: [BigInt(offerId), tokenIds.map(BigInt)],
       }),
     );
   });
@@ -536,7 +542,7 @@ export function useTakeOffer() {
 
 export function useRepayLoan() {
   const me = useMyAddress();
-  return useAction(async (loanId: string) => {
+  return useAction(async (loanId: string, currency: Currency) => {
     if (!me) throw new Error("Connect a wallet first.");
 
     const due = await readContract(wagmiConfig, {
@@ -544,13 +550,15 @@ export function useRepayLoan() {
       functionName: "totalDue",
       args: [BigInt(loanId)],
     });
-    await ensureUsdg(me, due);
+
+    if (currency === "usdg") await ensureUsdg(me, due);
 
     return send(
       await writeContract(wagmiConfig, {
         ...escrow,
         functionName: "repay",
         args: [BigInt(loanId)],
+        value: currency === "eth" ? due : 0n,
       }),
     );
   });
@@ -569,11 +577,12 @@ export function useClaimCollateral() {
 }
 
 export function useWithdraw() {
-  return useAction(async () =>
+  return useAction(async (currency: Currency) =>
     send(
       await writeContract(wagmiConfig, {
         ...escrow,
         functionName: "withdraw",
+        args: [currencyToEnum(currency)],
       }),
     ),
   );
