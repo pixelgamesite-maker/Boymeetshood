@@ -1,19 +1,62 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
-import type { Loan, LoanRequest, Offer, OwnedBoy } from "@/types/lending";
+import {
+  CURRENCY_LABEL,
+  type Currency,
+  type Loan,
+  type LoanRequest,
+  type Offer,
+  type OwnedBoy,
+} from "@/types/lending";
 import { MAX_BUNDLE } from "@/lib/contracts";
 import {
+  formatAmount,
   formatDuration,
   formatInterest,
-  formatUsdg,
   interestOn,
-  parseUsdg,
+  parseAmount,
   shortAddress,
   timeLeft,
 } from "@/lib/format";
 import { useNow } from "@/hooks/useLending";
 import { BoyAvatar, Button, Panel, Pill, Stat } from "@/components/lending/primitives";
 
-/* ── Boy picker, shared by the request form and the offer flow ───────────*/
+/* ── Shared controls ─────────────────────────────────────────────────────*/
+
+function CurrencyToggle({
+  value,
+  onChange,
+}: {
+  value: Currency;
+  onChange: (c: Currency) => void;
+}) {
+  return (
+    <div
+      className="inline-flex gap-1 rounded-full p-1"
+      style={{ background: "rgba(255,255,255,0.07)" }}
+      role="tablist"
+      aria-label="Currency"
+    >
+      {(["usdg", "eth"] as Currency[]).map((c) => (
+        <button
+          key={c}
+          type="button"
+          role="tab"
+          aria-selected={value === c}
+          onClick={() => onChange(c)}
+          className="rounded-full px-5 py-2 text-[13px] font-bold"
+          style={{
+            background: value === c ? "var(--lime)" : "transparent",
+            color: value === c ? "var(--ink)" : "var(--fg-dim)",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          {CURRENCY_LABEL[c]}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function BoyPicker({
   boys,
@@ -46,7 +89,7 @@ function BoyPicker({
             onClick={() => onToggle(boy.tokenId)}
             disabled={full}
             aria-pressed={active}
-            className="flex items-center gap-2.5 rounded-[12px] p-2 pr-3.5 transition-colors"
+            className="flex items-center gap-2.5 rounded-[12px] p-2 pr-3.5"
             style={{
               background: active ? "var(--lime)" : "rgba(255,255,255,0.06)",
               color: active ? "var(--ink)" : "#fff",
@@ -65,8 +108,6 @@ function BoyPicker({
     </div>
   );
 }
-
-/* ── Inputs ──────────────────────────────────────────────────────────────*/
 
 const inputStyle: CSSProperties = {
   width: "100%",
@@ -143,6 +184,22 @@ function DurationPicker({
   );
 }
 
+/** Shown with any amount in a currency, so nobody mistakes one for the other. */
+function CurrencyBadge({ currency }: { currency: Currency }) {
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[10.5px] font-extrabold"
+      style={{
+        fontFamily: "var(--mono)",
+        background: currency === "eth" ? "var(--sky)" : "var(--lime)",
+        color: "var(--ink)",
+      }}
+    >
+      {CURRENCY_LABEL[currency]}
+    </span>
+  );
+}
+
 /* ── Borrower: post a request ────────────────────────────────────────────*/
 
 export function CreateRequestForm({
@@ -157,16 +214,18 @@ export function CreateRequestForm({
     principal: bigint;
     interestBps: number;
     durationSecs: number;
+    currency: Currency;
   }) => void;
   pending: boolean;
   error: string | null;
 }) {
   const [selected, setSelected] = useState<number[]>([]);
+  const [currency, setCurrency] = useState<Currency>("usdg");
   const [amount, setAmount] = useState("");
   const [interest, setInterest] = useState("10");
   const [duration, setDuration] = useState(604_800);
 
-  const principal = parseUsdg(amount);
+  const principal = parseAmount(amount, currency);
   const interestNum = Number(interest);
   const interestBps = Math.round(interestNum * 100);
 
@@ -179,41 +238,45 @@ export function CreateRequestForm({
     interestNum <= 100;
 
   const repay =
-    principal && principal > 0n && interestBps >= 0
-      ? principal + interestOn(principal, interestBps)
-      : null;
-
-  function toggle(tokenId: number) {
-    setSelected((s) =>
-      s.includes(tokenId) ? s.filter((t) => t !== tokenId) : [...s, tokenId],
-    );
-  }
+    principal && principal > 0n ? principal + interestOn(principal, interestBps) : null;
 
   return (
     <Panel>
-      <p className="m-0 text-[17px] font-extrabold">Borrow against your Boys</p>
-      <p
-        className="m-0 mt-1.5 max-w-[60ch] text-[13.5px] leading-relaxed"
-        style={{ color: "var(--fg-dim)" }}
-      >
-        Pick the Boys you'll pledge, say what you want for them, and post it.
-        You need no USDG to do this — only gas. Your Boys sit in escrow until
-        someone funds you, or until you cancel.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="m-0 text-[17px] font-extrabold">Borrow against your Boys</p>
+          <p
+            className="m-0 mt-1.5 max-w-[58ch] text-[13.5px] leading-relaxed"
+            style={{ color: "var(--fg-dim)" }}
+          >
+            Pick what you'll pledge, name your price, post it. You need no
+            capital to do this — only gas. Your Boys sit in escrow until someone
+            funds you, or until you cancel.
+          </p>
+        </div>
+        <CurrencyToggle value={currency} onChange={setCurrency} />
+      </div>
 
       <div className="mt-6">
         <p className="m-0 mb-3 text-[12.5px] font-semibold" style={{ color: "var(--fg-dim)" }}>
           Collateral {selected.length > 0 && `· ${selected.length} selected`}
         </p>
-        <BoyPicker boys={boys} selected={selected} onToggle={toggle} max={MAX_BUNDLE} />
+        <BoyPicker
+          boys={boys}
+          selected={selected}
+          max={MAX_BUNDLE}
+          onToggle={(id) =>
+            setSelected((s) => (s.includes(id) ? s.filter((t) => t !== id) : [...s, id]))
+          }
+        />
       </div>
 
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
-        <Field label="Amount you want" suffix="USDG">
+        <Field label="Amount you want" suffix={CURRENCY_LABEL[currency]}>
           <input
             inputMode="decimal"
             value={amount}
-            placeholder="25"
+            placeholder={currency === "eth" ? "0.1" : "25"}
             onChange={(e) => setAmount(e.target.value)}
             style={inputStyle}
           />
@@ -241,7 +304,7 @@ export function CreateRequestForm({
           className="m-0 mt-5 text-[13px] leading-relaxed"
           style={{ color: "var(--fg-dim)", fontFamily: "var(--mono)" }}
         >
-          You repay {formatUsdg(repay, { decimals: 2 })} USDG within{" "}
+          You repay {formatAmount(repay, currency)} {CURRENCY_LABEL[currency]} within{" "}
           {formatDuration(duration)} or {selected.length}{" "}
           {selected.length === 1 ? "Boy goes" : "Boys go"} to your lender.
         </p>
@@ -263,6 +326,7 @@ export function CreateRequestForm({
               principal,
               interestBps,
               durationSecs: duration,
+              currency,
             })
           }
           disabled={!valid || pending}
@@ -290,16 +354,18 @@ export function CreateOfferForm({
     interestBps: number;
     durationSecs: number;
     tokenCount: number;
+    currency: Currency;
   }) => void;
   pending: boolean;
   error: string | null;
 }) {
+  const [currency, setCurrency] = useState<Currency>("usdg");
   const [amount, setAmount] = useState("");
   const [interest, setInterest] = useState("10");
   const [duration, setDuration] = useState(604_800);
   const [tokenCount, setTokenCount] = useState("1");
 
-  const principal = parseUsdg(amount);
+  const principal = parseAmount(amount, currency);
   const interestNum = Number(interest);
   const count = Number(tokenCount);
   const interestBps = Math.round(interestNum * 100);
@@ -319,21 +385,26 @@ export function CreateOfferForm({
 
   return (
     <Panel>
-      <p className="m-0 text-[17px] font-extrabold">Offer to lend</p>
-      <p
-        className="m-0 mt-1.5 max-w-[60ch] text-[13.5px] leading-relaxed"
-        style={{ color: "var(--fg-dim)" }}
-      >
-        Your USDG is escrowed now, so the offer is always good for its full
-        amount. Any holder can take it with Boys of their choosing.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="m-0 text-[17px] font-extrabold">Offer to lend</p>
+          <p
+            className="m-0 mt-1.5 max-w-[58ch] text-[13.5px] leading-relaxed"
+            style={{ color: "var(--fg-dim)" }}
+          >
+            Your funds are escrowed now, so the offer is always good for its
+            full amount. Any holder can take it with Boys of their choosing.
+          </p>
+        </div>
+        <CurrencyToggle value={currency} onChange={setCurrency} />
+      </div>
 
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
-        <Field label="Amount to lend" suffix="USDG">
+        <Field label="Amount to lend" suffix={CURRENCY_LABEL[currency]}>
           <input
             inputMode="decimal"
             value={amount}
-            placeholder="25"
+            placeholder={currency === "eth" ? "0.1" : "25"}
             onChange={(e) => setAmount(e.target.value)}
             style={inputStyle}
           />
@@ -347,7 +418,7 @@ export function CreateOfferForm({
             style={inputStyle}
           />
         </Field>
-        <Field label="Boys required as collateral" suffix={`1–${MAX_BUNDLE}`}>
+        <Field label="Boys required" suffix={`1–${MAX_BUNDLE}`}>
           <input
             inputMode="numeric"
             value={tokenCount}
@@ -369,8 +440,8 @@ export function CreateOfferForm({
           className="m-0 mt-5 text-[13px]"
           style={{ color: "var(--fg-dim)", fontFamily: "var(--mono)" }}
         >
-          Borrower repays {formatUsdg(repay, { decimals: 2 })} USDG, or you keep
-          the {count === 1 ? "Boy" : "Boys"}.
+          Borrower repays {formatAmount(repay, currency)} {CURRENCY_LABEL[currency]},
+          or you keep the {count === 1 ? "Boy" : "Boys"}.
         </p>
       )}
 
@@ -390,6 +461,7 @@ export function CreateOfferForm({
               interestBps,
               durationSecs: duration,
               tokenCount: count,
+              currency,
             })
           }
           disabled={!valid || pending}
@@ -398,6 +470,27 @@ export function CreateOfferForm({
         </Button>
       </div>
     </Panel>
+  );
+}
+
+/* ── Token strip ─────────────────────────────────────────────────────────*/
+
+function TokenStrip({ tokenIds }: { tokenIds: number[] }) {
+  return (
+    <div className="mt-5 flex flex-wrap gap-2">
+      {tokenIds.map((tokenId) => (
+        <span
+          key={tokenId}
+          className="flex items-center gap-2 rounded-[10px] px-2.5 py-1.5"
+          style={{ background: "rgba(255,255,255,0.05)" }}
+        >
+          <BoyAvatar tokenId={tokenId} size={22} />
+          <span className="text-[12px] font-bold" style={{ fontFamily: "var(--mono)" }}>
+            #{tokenId}
+          </span>
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -422,17 +515,15 @@ export function RequestCard({
     <Panel>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <p
               className="m-0 text-[24px] font-extrabold leading-none"
               style={{ fontFamily: "var(--mono)" }}
             >
-              {formatUsdg(request.principal, { decimals: 0 })}
-              <span className="ml-1.5 text-[14px]" style={{ color: "var(--fg-dim)" }}>
-                USDG
-              </span>
+              {formatAmount(request.principal, request.currency)}
             </p>
-            {mine && <Pill tone="sky">Your request</Pill>}
+            <CurrencyBadge currency={request.currency} />
+            {mine && <Pill tone="sky">Yours</Pill>}
           </div>
           <p className="m-0 mt-2 text-[12.5px]" style={{ color: "var(--fg-faint)" }}>
             from {shortAddress(request.borrower)}
@@ -453,27 +544,14 @@ export function RequestCard({
       <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Interest" value={formatInterest(request.interestBps)} tone="lime" />
         <Stat label="Term" value={formatDuration(request.durationSecs)} />
-        <Stat label="They repay" value={formatUsdg(repay, { decimals: 0 })} />
+        <Stat label="They repay" value={formatAmount(repay, request.currency)} />
         <Stat
           label="Collateral"
           value={`${request.tokenIds.length} ${request.tokenIds.length === 1 ? "Boy" : "Boys"}`}
         />
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        {request.tokenIds.map((tokenId) => (
-          <span
-            key={tokenId}
-            className="flex items-center gap-2 rounded-[10px] px-2.5 py-1.5"
-            style={{ background: "rgba(255,255,255,0.05)" }}
-          >
-            <BoyAvatar tokenId={tokenId} size={22} />
-            <span className="text-[12px] font-bold" style={{ fontFamily: "var(--mono)" }}>
-              #{tokenId}
-            </span>
-          </span>
-        ))}
-      </div>
+      <TokenStrip tokenIds={request.tokenIds} />
     </Panel>
   );
 }
@@ -502,25 +580,20 @@ export function OfferCard({
   const enough = boys.length >= offer.tokenCount;
   const ready = selected.length === offer.tokenCount;
 
-  function toggle(tokenId: number) {
-    setSelected((s) =>
-      s.includes(tokenId) ? s.filter((t) => t !== tokenId) : [...s, tokenId],
-    );
-  }
-
   return (
     <Panel>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p
-            className="m-0 text-[24px] font-extrabold leading-none"
-            style={{ fontFamily: "var(--mono)" }}
-          >
-            {formatUsdg(offer.principal, { decimals: 0 })}
-            <span className="ml-1.5 text-[14px]" style={{ color: "var(--fg-dim)" }}>
-              USDG
-            </span>
-          </p>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <p
+              className="m-0 text-[24px] font-extrabold leading-none"
+              style={{ fontFamily: "var(--mono)" }}
+            >
+              {formatAmount(offer.principal, offer.currency)}
+            </p>
+            <CurrencyBadge currency={offer.currency} />
+            {mine && <Pill tone="sky">Yours</Pill>}
+          </div>
           <p className="m-0 mt-2 text-[12.5px]" style={{ color: "var(--fg-faint)" }}>
             from {shortAddress(offer.lender)}
           </p>
@@ -544,7 +617,7 @@ export function OfferCard({
       <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Interest" value={formatInterest(offer.interestBps)} tone="lime" />
         <Stat label="Term" value={formatDuration(offer.durationSecs)} />
-        <Stat label="You repay" value={formatUsdg(repay, { decimals: 0 })} />
+        <Stat label="You repay" value={formatAmount(repay, offer.currency)} />
         <Stat
           label="Collateral"
           value={`${offer.tokenCount} ${offer.tokenCount === 1 ? "Boy" : "Boys"}`}
@@ -552,27 +625,24 @@ export function OfferCard({
       </div>
 
       {picking && (
-        <div
-          className="mt-5 rounded-[14px] p-4"
-          style={{ background: "rgba(255,255,255,0.04)" }}
-        >
-          <p className="m-0 text-[13.5px] font-bold">
-            Pick exactly {offer.tokenCount}
-          </p>
+        <div className="mt-5 rounded-[14px] p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+          <p className="m-0 text-[13.5px] font-bold">Pick exactly {offer.tokenCount}</p>
           <p
             className="m-0 mb-4 mt-1 text-[12.5px] leading-relaxed"
             style={{ color: "var(--fg-dim)" }}
           >
             Locked for {formatDuration(offer.durationSecs)}. Repay{" "}
-            {formatUsdg(repay, { decimals: 0 })} USDG before the deadline or the
-            lender keeps them.
+            {formatAmount(repay, offer.currency)} {CURRENCY_LABEL[offer.currency]} before
+            the deadline or the lender keeps them.
           </p>
 
           <BoyPicker
             boys={boys}
             selected={selected}
-            onToggle={toggle}
             max={offer.tokenCount}
+            onToggle={(id) =>
+              setSelected((s) => (s.includes(id) ? s.filter((t) => t !== id) : [...s, id]))
+            }
           />
 
           <div className="mt-4">
@@ -580,7 +650,7 @@ export function OfferCard({
               {busy
                 ? "Confirming…"
                 : ready
-                  ? `Borrow ${formatUsdg(offer.principal, { decimals: 0 })} USDG`
+                  ? `Borrow ${formatAmount(offer.principal, offer.currency)} ${CURRENCY_LABEL[offer.currency]}`
                   : `${selected.length} of ${offer.tokenCount} picked`}
             </Button>
           </div>
@@ -624,11 +694,11 @@ export function LoanCard({
     <Panel>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <p className="m-0 text-[17px] font-extrabold leading-none">
-              {loan.tokenIds.length}{" "}
-              {loan.tokenIds.length === 1 ? "Boy" : "Boys"} in escrow
+              {loan.tokenIds.length} {loan.tokenIds.length === 1 ? "Boy" : "Boys"} in escrow
             </p>
+            <CurrencyBadge currency={loan.currency} />
             {pill}
           </div>
           <p className="m-0 mt-2 text-[12.5px]" style={{ color: "var(--fg-faint)" }}>
@@ -642,7 +712,7 @@ export function LoanCard({
           <Button onClick={onRepay} disabled={busy}>
             {busy
               ? "Repaying…"
-              : `Repay ${formatUsdg(loan.totalDue, { decimals: 2 })} USDG`}
+              : `Repay ${formatAmount(loan.totalDue, loan.currency)} ${CURRENCY_LABEL[loan.currency]}`}
           </Button>
         )}
         {active && role === "lender" && remaining.expired && (
@@ -653,12 +723,12 @@ export function LoanCard({
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Stat label="Principal" value={formatUsdg(loan.principal, { decimals: 0 })} />
+        <Stat label="Principal" value={formatAmount(loan.principal, loan.currency)} />
         <Stat
           label={role === "borrower" ? "You repay" : "You're owed"}
-          value={formatUsdg(
+          value={formatAmount(
             role === "borrower" ? loan.totalDue : loan.repayAmount,
-            { decimals: 2 },
+            loan.currency,
           )}
         />
         <Stat
@@ -675,26 +745,10 @@ export function LoanCard({
         <Stat label="Collateral" value={`${loan.tokenIds.length} pledged`} />
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        {loan.tokenIds.map((tokenId) => (
-          <span
-            key={tokenId}
-            className="flex items-center gap-2 rounded-[10px] px-2.5 py-1.5"
-            style={{ background: "rgba(255,255,255,0.05)" }}
-          >
-            <BoyAvatar tokenId={tokenId} size={22} />
-            <span className="text-[12px] font-bold" style={{ fontFamily: "var(--mono)" }}>
-              #{tokenId}
-            </span>
-          </span>
-        ))}
-      </div>
+      <TokenStrip tokenIds={loan.tokenIds} />
 
       {active && remaining.urgent && role === "borrower" && (
-        <p
-          className="m-0 mt-4 text-[13px] leading-relaxed"
-          style={{ color: "var(--punch)" }}
-        >
+        <p className="m-0 mt-4 text-[13px] leading-relaxed" style={{ color: "var(--punch)" }}>
           {remaining.expired
             ? "The deadline has passed. This loan can no longer be repaid."
             : "Under a day left. Miss it and every pledged Boy transfers to the lender."}
