@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { formatUsdgLabel } from "@/lib/format";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import { OfferCard } from "@/components/lending/OfferCard";
@@ -11,7 +12,7 @@ import {
   SkeletonRows,
 } from "@/components/lending/primitives";
 import {
-  MY_ADDRESS,
+  useMyAddress,
   useCancelOffer,
   useClaimCollateral,
   useCreateOffer,
@@ -20,6 +21,8 @@ import {
   useOffers,
   useRepayLoan,
   useTakeOffer,
+  useWithdraw,
+  useOwed,
 } from "@/hooks/useLending";
 
 type Side = "borrow" | "lend";
@@ -78,6 +81,7 @@ export default function Market() {
 /* ── Borrow ──────────────────────────────────────────────────────────────*/
 
 function BorrowView() {
+  const me = useMyAddress();
   const offers = useOffers();
   const loans = useMyLoans();
   const boys = useMyBoys();
@@ -87,8 +91,8 @@ function BorrowView() {
 
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const open = (offers.data ?? []).filter((o) => o.lender !== MY_ADDRESS);
-  const myBorrows = (loans.data ?? []).filter((l) => l.borrower === MY_ADDRESS);
+  const open = (offers.data ?? []).filter((o) => o.lender.toLowerCase() !== me?.toLowerCase());
+  const myBorrows = (loans.data ?? []).filter((l) => l.borrower.toLowerCase() === me?.toLowerCase());
 
   async function handleTake(offerId: string, tokenId: number) {
     setPendingId(offerId);
@@ -168,6 +172,7 @@ function BorrowView() {
 /* ── Lend ────────────────────────────────────────────────────────────────*/
 
 function LendView() {
+  const me = useMyAddress();
   const offers = useOffers();
   const loans = useMyLoans();
 
@@ -177,8 +182,8 @@ function LendView() {
 
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const myOffers = (offers.data ?? []).filter((o) => o.lender === MY_ADDRESS);
-  const funded = (loans.data ?? []).filter((l) => l.lender === MY_ADDRESS);
+  const myOffers = (offers.data ?? []).filter((o) => o.lender.toLowerCase() === me?.toLowerCase());
+  const funded = (loans.data ?? []).filter((l) => l.lender.toLowerCase() === me?.toLowerCase());
 
   async function handleCancel(offerId: string) {
     setPendingId(offerId);
@@ -194,6 +199,8 @@ function LendView() {
 
   return (
     <div className="flex flex-col gap-12">
+      <ClaimEarnings />
+
       <CreateOfferForm
         onSubmit={(input) => create.run(input)}
         pending={create.pending}
@@ -259,6 +266,47 @@ function LendView() {
 }
 
 /* ── Shared bits ─────────────────────────────────────────────────────────*/
+
+/**
+ * Repayments credit a balance in the contract rather than pushing USDG out,
+ * so lenders collect here. That's what keeps a frozen lender address from
+ * blocking a borrower's repayment.
+ */
+function ClaimEarnings() {
+  const owed = useOwed();
+  const withdraw = useWithdraw();
+
+  const amount = owed.data ?? 0n;
+  if (owed.loading || amount === 0n) return null;
+
+  return (
+    <div
+      className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] p-6"
+      style={{ background: "var(--ink-2)", border: "1px solid var(--lime)" }}
+    >
+      <div>
+        <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
+          Ready to claim
+        </p>
+        <p
+          className="m-0 mt-1 text-[24px] font-extrabold leading-none"
+          style={{ fontFamily: "var(--mono)", color: "var(--lime)" }}
+        >
+          {formatUsdgLabel(amount)}
+        </p>
+      </div>
+      <Button
+        onClick={async () => {
+          const ok = await withdraw.run();
+          if (ok) owed.refetch();
+        }}
+        disabled={withdraw.pending}
+      >
+        {withdraw.pending ? "Claiming…" : "Claim earnings"}
+      </Button>
+    </div>
+  );
+}
 
 function Section({
   title,
