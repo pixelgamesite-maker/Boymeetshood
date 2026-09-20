@@ -20,8 +20,11 @@ export const CONTRACTS = {
   /** Receives the protocol fee on every repayment. */
   treasury: "0x05a04a21A20905cF37AE46fBc2a83A3774dbffD2" as Address,
 
-  /** TODO: the lending escrow contract, once deployed. */
-  escrow: UNSET as Address,
+  /**
+   * BoyMeetsHoodLending, deployed 2026-09-20 in block 67935354.
+   * Owner and treasury are both 0x05a04a21…
+   */
+  escrow: "0x2d8314C63d1151a028fD224bdF88A46369A40b94" as Address,
 } as const;
 
 export const isSet = (addr: Address) => addr !== UNSET;
