@@ -2,9 +2,13 @@ import { useState, type ReactNode } from "react";
 import { formatUsdgLabel } from "@/lib/format";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
-import { OfferCard } from "@/components/lending/OfferCard";
-import { LoanCard } from "@/components/lending/LoanCard";
-import { CreateOfferForm } from "@/components/lending/CreateOfferForm";
+import {
+  CreateOfferForm,
+  CreateRequestForm,
+  LoanCard,
+  OfferCard,
+  RequestCard,
+} from "@/components/lending/cards";
 import {
   Button,
   EmptyState,
@@ -12,23 +16,28 @@ import {
   SkeletonRows,
 } from "@/components/lending/primitives";
 import {
-  useMyAddress,
   useCancelOffer,
+  useCancelRequest,
   useClaimCollateral,
   useCreateOffer,
+  useCreateRequest,
+  useFundRequest,
+  useMyAddress,
   useMyBoys,
   useMyLoans,
   useOffers,
+  useOwed,
   useRepayLoan,
+  useRequests,
   useTakeOffer,
   useWithdraw,
-  useOwed,
 } from "@/hooks/useLending";
 
 type Side = "borrow" | "lend";
 
 export default function Market() {
   const [side, setSide] = useState<Side>("borrow");
+  const me = useMyAddress();
 
   return (
     <div style={{ background: "var(--ink)", minHeight: "100vh" }}>
@@ -46,7 +55,6 @@ export default function Market() {
             className="mt-7 inline-flex gap-1 rounded-full p-1"
             style={{ background: "rgba(255,255,255,0.07)" }}
             role="tablist"
-            aria-label="Borrow or lend"
           >
             {(["borrow", "lend"] as Side[]).map((s) => (
               <button
@@ -69,7 +77,16 @@ export default function Market() {
           </div>
 
           <div className="mt-10">
-            {side === "borrow" ? <BorrowView /> : <LendView />}
+            {!me ? (
+              <EmptyState
+                title="Connect your wallet"
+                body="You'll need a wallet on Robinhood Chain to borrow against your Boys or lend USDG."
+              />
+            ) : side === "borrow" ? (
+              <BorrowView />
+            ) : (
+              <LendView />
+            )}
           </div>
         </div>
       </main>
@@ -82,61 +99,108 @@ export default function Market() {
 
 function BorrowView() {
   const me = useMyAddress();
+  const boys = useMyBoys();
+  const requests = useRequests();
   const offers = useOffers();
   const loans = useMyLoans();
-  const boys = useMyBoys();
 
-  const take = useTakeOffer();
+  const createRequest = useCreateRequest();
+  const cancelRequest = useCancelRequest();
+  const takeOffer = useTakeOffer();
   const repay = useRepayLoan();
 
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  const open = (offers.data ?? []).filter((o) => o.lender.toLowerCase() !== me?.toLowerCase());
-  const myBorrows = (loans.data ?? []).filter((l) => l.borrower.toLowerCase() === me?.toLowerCase());
+  const mine = me?.toLowerCase();
+  const myRequests = (requests.data ?? []).filter(
+    (r) => r.borrower.toLowerCase() === mine,
+  );
+  const openOffers = (offers.data ?? []).filter(
+    (o) => o.lender.toLowerCase() !== mine,
+  );
+  const myBorrows = (loans.data ?? []).filter(
+    (l) => l.borrower.toLowerCase() === mine,
+  );
 
-  async function handleTake(offerId: string, tokenId: number) {
-    setPendingId(offerId);
-    await take.run(offerId, tokenId);
-    setPendingId(null);
-  }
-
-  async function handleRepay(loanId: string) {
-    setPendingId(loanId);
-    await repay.run(loanId);
-    setPendingId(null);
+  function refreshAll() {
+    boys.refetch();
+    requests.refetch();
+    offers.refetch();
+    loans.refetch();
   }
 
   return (
     <div className="flex flex-col gap-12">
+      <CreateRequestForm
+        boys={boys.data ?? []}
+        pending={createRequest.pending}
+        error={createRequest.error}
+        onSubmit={async (input) => {
+          if (await createRequest.run(input)) refreshAll();
+        }}
+      />
+
+      {myRequests.length > 0 && (
+        <Section title="Your open requests" note="Waiting for someone to fund them.">
+          <div className="flex flex-col gap-3">
+            {myRequests.map((request) => (
+              <RequestCard
+                key={request.id}
+                request={request}
+                mine
+                busy={busyId === request.id}
+                onFund={() => {}}
+                onCancel={async () => {
+                  setBusyId(request.id);
+                  const ok = await cancelRequest.run(request.id);
+                  setBusyId(null);
+                  if (ok) refreshAll();
+                }}
+              />
+            ))}
+          </div>
+          {cancelRequest.error && (
+            <ActionError message={cancelRequest.error} onDismiss={cancelRequest.reset} />
+          )}
+        </Section>
+      )}
+
       <Section
-        title="Open offers"
-        note="Pick one and your Boy goes into escrow the same block."
+        title="Offers you can take"
+        note="Lenders with USDG already escrowed. Instant, no waiting."
       >
         {offers.loading && !offers.data ? (
-          <SkeletonRows />
+          <SkeletonRows count={2} />
         ) : offers.error ? (
           <ErrorState message={offers.error} onRetry={offers.refetch} />
-        ) : open.length === 0 ? (
+        ) : openOffers.length === 0 ? (
           <EmptyState
-            title="No offers on the book"
-            body="Nobody is lending right now. Check back, or post your own offer from the lend side."
+            title="No offers right now"
+            body="Post a request above instead and let a lender come to you."
           />
         ) : (
           <div className="flex flex-col gap-3">
-            {open.map((offer) => (
+            {openOffers.map((offer) => (
               <OfferCard
                 key={offer.id}
                 offer={offer}
                 boys={boys.data ?? []}
                 mine={false}
-                busy={pendingId === offer.id}
-                onTake={(tokenId) => handleTake(offer.id, tokenId)}
+                busy={busyId === offer.id}
                 onCancel={() => {}}
+                onTake={async (tokenIds) => {
+                  setBusyId(offer.id);
+                  const ok = await takeOffer.run(offer.id, tokenIds);
+                  setBusyId(null);
+                  if (ok) refreshAll();
+                }}
               />
             ))}
           </div>
         )}
-        {take.error && <ActionError message={take.error} onDismiss={take.reset} />}
+        {takeOffer.error && (
+          <ActionError message={takeOffer.error} onDismiss={takeOffer.reset} />
+        )}
       </Section>
 
       <Section title="Your loans">
@@ -146,8 +210,8 @@ function BorrowView() {
           <ErrorState message={loans.error} onRetry={loans.refetch} />
         ) : myBorrows.length === 0 ? (
           <EmptyState
-            title="You haven't borrowed yet"
-            body="Take an offer above to unlock USDG against a Boy without selling it."
+            title="Nothing borrowed yet"
+            body="Post a request or take an offer to unlock USDG against your Boys."
           />
         ) : (
           <div className="flex flex-col gap-3">
@@ -156,9 +220,14 @@ function BorrowView() {
                 key={loan.id}
                 loan={loan}
                 role="borrower"
-                busy={pendingId === loan.id}
-                onRepay={() => handleRepay(loan.id)}
+                busy={busyId === loan.id}
                 onClaim={() => {}}
+                onRepay={async () => {
+                  setBusyId(loan.id);
+                  const ok = await repay.run(loan.id);
+                  setBusyId(null);
+                  if (ok) refreshAll();
+                }}
               />
             ))}
           </div>
@@ -173,51 +242,83 @@ function BorrowView() {
 
 function LendView() {
   const me = useMyAddress();
+  const requests = useRequests();
   const offers = useOffers();
   const loans = useMyLoans();
 
-  const create = useCreateOffer();
-  const cancel = useCancelOffer();
+  const createOffer = useCreateOffer();
+  const cancelOffer = useCancelOffer();
+  const fundRequest = useFundRequest();
   const claim = useClaimCollateral();
 
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  const myOffers = (offers.data ?? []).filter((o) => o.lender.toLowerCase() === me?.toLowerCase());
-  const funded = (loans.data ?? []).filter((l) => l.lender.toLowerCase() === me?.toLowerCase());
+  const mine = me?.toLowerCase();
+  const openRequests = (requests.data ?? []).filter(
+    (r) => r.borrower.toLowerCase() !== mine,
+  );
+  const myOffers = (offers.data ?? []).filter(
+    (o) => o.lender.toLowerCase() === mine,
+  );
+  const funded = (loans.data ?? []).filter((l) => l.lender.toLowerCase() === mine);
 
-  async function handleCancel(offerId: string) {
-    setPendingId(offerId);
-    await cancel.run(offerId);
-    setPendingId(null);
-  }
-
-  async function handleClaim(loanId: string) {
-    setPendingId(loanId);
-    await claim.run(loanId);
-    setPendingId(null);
+  function refreshAll() {
+    requests.refetch();
+    offers.refetch();
+    loans.refetch();
   }
 
   return (
     <div className="flex flex-col gap-12">
       <ClaimEarnings />
 
-      <CreateOfferForm
-        onSubmit={(input) => create.run(input)}
-        pending={create.pending}
-        error={create.error}
-      />
-
-      <Section title="Your open offers">
-        {offers.loading && !offers.data ? (
+      <Section
+        title="Requests you can fund"
+        note="Holders who've already put their Boys in escrow."
+      >
+        {requests.loading && !requests.data ? (
           <SkeletonRows count={2} />
-        ) : offers.error ? (
-          <ErrorState message={offers.error} onRetry={offers.refetch} />
-        ) : myOffers.length === 0 ? (
+        ) : requests.error ? (
+          <ErrorState message={requests.error} onRetry={requests.refetch} />
+        ) : openRequests.length === 0 ? (
           <EmptyState
-            title="Nothing on the book"
-            body="Post an offer above and it goes live immediately for any holder to take."
+            title="Nobody's asking right now"
+            body="Post an offer below and let borrowers come to you instead."
           />
         ) : (
+          <div className="flex flex-col gap-3">
+            {openRequests.map((request) => (
+              <RequestCard
+                key={request.id}
+                request={request}
+                mine={false}
+                busy={busyId === request.id}
+                onCancel={() => {}}
+                onFund={async () => {
+                  setBusyId(request.id);
+                  const ok = await fundRequest.run(request.id, request.principal);
+                  setBusyId(null);
+                  if (ok) refreshAll();
+                }}
+              />
+            ))}
+          </div>
+        )}
+        {fundRequest.error && (
+          <ActionError message={fundRequest.error} onDismiss={fundRequest.reset} />
+        )}
+      </Section>
+
+      <CreateOfferForm
+        pending={createOffer.pending}
+        error={createOffer.error}
+        onSubmit={async (input) => {
+          if (await createOffer.run(input)) refreshAll();
+        }}
+      />
+
+      {myOffers.length > 0 && (
+        <Section title="Your open offers">
           <div className="flex flex-col gap-3">
             {myOffers.map((offer) => (
               <OfferCard
@@ -225,25 +326,30 @@ function LendView() {
                 offer={offer}
                 boys={[]}
                 mine
-                busy={pendingId === offer.id}
+                busy={busyId === offer.id}
                 onTake={() => {}}
-                onCancel={() => handleCancel(offer.id)}
+                onCancel={async () => {
+                  setBusyId(offer.id);
+                  const ok = await cancelOffer.run(offer.id);
+                  setBusyId(null);
+                  if (ok) refreshAll();
+                }}
               />
             ))}
           </div>
-        )}
-        {cancel.error && <ActionError message={cancel.error} onDismiss={cancel.reset} />}
-      </Section>
+          {cancelOffer.error && (
+            <ActionError message={cancelOffer.error} onDismiss={cancelOffer.reset} />
+          )}
+        </Section>
+      )}
 
       <Section title="Loans you funded">
         {loans.loading && !loans.data ? (
           <SkeletonRows count={2} />
-        ) : loans.error ? (
-          <ErrorState message={loans.error} onRetry={loans.refetch} />
         ) : funded.length === 0 ? (
           <EmptyState
             title="No active loans"
-            body="Once a holder takes one of your offers, it shows up here with a live countdown."
+            body="Fund a request or wait for someone to take an offer."
           />
         ) : (
           <div className="flex flex-col gap-3">
@@ -252,9 +358,14 @@ function LendView() {
                 key={loan.id}
                 loan={loan}
                 role="lender"
-                busy={pendingId === loan.id}
+                busy={busyId === loan.id}
                 onRepay={() => {}}
-                onClaim={() => handleClaim(loan.id)}
+                onClaim={async () => {
+                  setBusyId(loan.id);
+                  const ok = await claim.run(loan.id);
+                  setBusyId(null);
+                  if (ok) refreshAll();
+                }}
               />
             ))}
           </div>
@@ -265,12 +376,11 @@ function LendView() {
   );
 }
 
-/* ── Shared bits ─────────────────────────────────────────────────────────*/
+/* ── Shared ──────────────────────────────────────────────────────────────*/
 
 /**
- * Repayments credit a balance in the contract rather than pushing USDG out,
- * so lenders collect here. That's what keeps a frozen lender address from
- * blocking a borrower's repayment.
+ * Repayments credit a balance rather than pushing USDG out, so lenders
+ * collect here. That's what stops a frozen address blocking a repayment.
  */
 function ClaimEarnings() {
   const owed = useOwed();
@@ -297,8 +407,7 @@ function ClaimEarnings() {
       </div>
       <Button
         onClick={async () => {
-          const ok = await withdraw.run();
-          if (ok) owed.refetch();
+          if (await withdraw.run()) owed.refetch();
         }}
         disabled={withdraw.pending}
       >
@@ -345,7 +454,7 @@ function ActionError({
       style={{ background: "rgba(255,61,113,0.12)" }}
     >
       <p className="m-0 text-[13.5px] font-bold" style={{ color: "var(--punch)" }}>
-        {message} Nothing was sent.
+        {message}
       </p>
       <Button variant="ghost" onClick={onDismiss}>
         Dismiss
