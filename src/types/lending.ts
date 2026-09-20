@@ -1,57 +1,56 @@
 /**
- * The shape of everything the lending protocol returns.
- *
- * This file is the contract between the mock data layer and the real chain
- * calls. Keep it exact: when useOffers() stops reading mock.ts and starts
- * reading the escrow contract, nothing in the UI should need to change.
- *
- * Amounts are bigint in USDG base units, the same way a contract returns them.
- * Never store a display number here — format at the edge, in lib/format.ts.
+ * Shapes returned by BoyMeetsHoodLending v2.
+ * Amounts are bigint in USDG base units, as the contract returns them.
  */
 
 export type Address = `0x${string}`;
 
-/** What a lender will accept as collateral against their offer. */
-export type CollateralSpec =
-  | { kind: "any" }
-  | { kind: "tokens"; tokenIds: number[] };
-
-export interface Offer {
+/** Posted by a borrower. Collateral is already escrowed. */
+export interface LoanRequest {
   id: string;
-  lender: Address;
-  /** USDG base units the borrower receives. */
+  borrower: Address;
+  tokenIds: number[];
+  /** USDG the borrower wants. */
   principal: bigint;
   /** Interest for the full term, in basis points. 1000 = 10%. */
   interestBps: number;
-  /** Loan length in seconds. */
   durationSecs: number;
-  collateral: CollateralSpec;
-  /** Unix seconds. */
-  createdAt: number;
+  /** Unix seconds, 0 = never expires. */
+  expiresAt: number;
+}
+
+/** Posted by a lender. USDG is already escrowed. */
+export interface Offer {
+  id: string;
+  lender: Address;
+  principal: bigint;
+  interestBps: number;
+  durationSecs: number;
+  expiresAt: number;
+  /** How many Boys the borrower must pledge. */
+  tokenCount: number;
 }
 
 export type LoanStatus = "active" | "repaid" | "defaulted";
 
 export interface Loan {
   id: string;
-  offerId: string;
   lender: Address;
   borrower: Address;
-  /** The Boy held in escrow. */
-  tokenId: number;
+  tokenIds: number[];
   principal: bigint;
-  interest: bigint;
-  /** principal + interest. What clears the loan. */
+  /** principal + interest, owed to the lender. */
   repayAmount: bigint;
-  /** Unix seconds. */
+  /** Protocol fee, owed to the treasury. */
+  fee: bigint;
+  /** repayAmount + fee. What the borrower actually pays. */
+  totalDue: bigint;
   startedAt: number;
   dueAt: number;
   status: LoanStatus;
 }
 
-/** A Boy in the connected wallet, and whether it can back a loan right now. */
+/** A Boy in the connected wallet. */
 export interface OwnedBoy {
   tokenId: number;
-  /** False while the Boy is already locked in an active loan. */
-  available: boolean;
 }
