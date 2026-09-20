@@ -1,13 +1,23 @@
 /**
- * BoyMeetsHoodLending, deployed at 0x2d8314C6… on Robinhood Chain.
- * Hand-written from the contract source: only what the app calls, so viem can
- * infer argument and return types precisely.
- *
- * Collateral enum: 0 = Any, 1 = Specific
- * Status enum:     0 = None, 1 = Active, 2 = Repaid, 3 = Defaulted
+ * BoyMeetsHoodLending v2 — 0x5be2edeeb3d76f1214De7ee35c52d3B9bD5f6762
+ * Status enum: 0 None, 1 Active, 2 Repaid, 3 Defaulted
  */
 export const lendingAbi = [
   /* ── Reads ────────────────────────────────────────────────────────────── */
+  {
+    type: "function",
+    name: "requests",
+    stateMutability: "view",
+    inputs: [{ name: "requestId", type: "uint256" }],
+    outputs: [
+      { name: "borrower", type: "address" },
+      { name: "principal", type: "uint128" },
+      { name: "interestBps", type: "uint16" },
+      { name: "duration", type: "uint32" },
+      { name: "expiresAt", type: "uint64" },
+      { name: "active", type: "bool" },
+    ],
+  },
   {
     type: "function",
     name: "offers",
@@ -19,8 +29,7 @@ export const lendingAbi = [
       { name: "interestBps", type: "uint16" },
       { name: "duration", type: "uint32" },
       { name: "expiresAt", type: "uint64" },
-      { name: "mode", type: "uint8" },
-      { name: "tokenId", type: "uint96" },
+      { name: "tokenCount", type: "uint8" },
       { name: "active", type: "bool" },
     ],
   },
@@ -32,7 +41,6 @@ export const lendingAbi = [
     outputs: [
       { name: "lender", type: "address" },
       { name: "borrower", type: "address" },
-      { name: "tokenId", type: "uint96" },
       { name: "principal", type: "uint128" },
       { name: "repayAmount", type: "uint128" },
       { name: "fee", type: "uint128" },
@@ -43,22 +51,30 @@ export const lendingAbi = [
   },
   {
     type: "function",
-    name: "activeOffers",
+    name: "requestTokens",
     stateMutability: "view",
-    inputs: [
-      { name: "cursor", type: "uint256" },
-      { name: "limit", type: "uint256" },
-    ],
-    outputs: [
-      { name: "ids", type: "uint256[]" },
-      { name: "nextCursor", type: "uint256" },
-    ],
+    inputs: [{ name: "requestId", type: "uint256" }],
+    outputs: [{ type: "uint256[]" }],
+  },
+  {
+    type: "function",
+    name: "loanTokens",
+    stateMutability: "view",
+    inputs: [{ name: "loanId", type: "uint256" }],
+    outputs: [{ type: "uint256[]" }],
   },
   {
     type: "function",
     name: "owed",
     stateMutability: "view",
     inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "nextRequestId",
+    stateMutability: "view",
+    inputs: [],
     outputs: [{ type: "uint256" }],
   },
   {
@@ -84,20 +100,59 @@ export const lendingAbi = [
   },
   {
     type: "function",
-    name: "isDefaulted",
+    name: "MAX_BUNDLE",
     stateMutability: "view",
-    inputs: [{ name: "loanId", type: "uint256" }],
-    outputs: [{ type: "bool" }],
+    inputs: [],
+    outputs: [{ type: "uint8" }],
+  },
+
+  /* ── Borrower side ────────────────────────────────────────────────────── */
+  {
+    type: "function",
+    name: "createRequest",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "tokenIds", type: "uint256[]" },
+      { name: "principal", type: "uint128" },
+      { name: "interestBps", type: "uint16" },
+      { name: "duration", type: "uint32" },
+      { name: "expiresAt", type: "uint64" },
+    ],
+    outputs: [{ name: "requestId", type: "uint256" }],
   },
   {
     type: "function",
-    name: "feeBps",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "uint16" }],
+    name: "cancelRequest",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "requestId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "takeOffer",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "offerId", type: "uint256" },
+      { name: "tokenIds", type: "uint256[]" },
+    ],
+    outputs: [{ name: "loanId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "repay",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "loanId", type: "uint256" }],
+    outputs: [],
   },
 
-  /* ── Writes ───────────────────────────────────────────────────────────── */
+  /* ── Lender side ──────────────────────────────────────────────────────── */
+  {
+    type: "function",
+    name: "fundRequest",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "requestId", type: "uint256" }],
+    outputs: [{ name: "loanId", type: "uint256" }],
+  },
   {
     type: "function",
     name: "createOffer",
@@ -107,8 +162,7 @@ export const lendingAbi = [
       { name: "interestBps", type: "uint16" },
       { name: "duration", type: "uint32" },
       { name: "expiresAt", type: "uint64" },
-      { name: "mode", type: "uint8" },
-      { name: "tokenId", type: "uint96" },
+      { name: "tokenCount", type: "uint8" },
     ],
     outputs: [{ name: "offerId", type: "uint256" }],
   },
@@ -117,23 +171,6 @@ export const lendingAbi = [
     name: "cancelOffer",
     stateMutability: "nonpayable",
     inputs: [{ name: "offerId", type: "uint256" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "takeOffer",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "offerId", type: "uint256" },
-      { name: "tokenId", type: "uint96" },
-    ],
-    outputs: [{ name: "loanId", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "repay",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "loanId", type: "uint256" }],
     outputs: [],
   },
   {
@@ -149,36 +186,5 @@ export const lendingAbi = [
     stateMutability: "nonpayable",
     inputs: [],
     outputs: [{ name: "amount", type: "uint256" }],
-  },
-
-  /* ── Events ───────────────────────────────────────────────────────────── */
-  {
-    type: "event",
-    name: "LoanStarted",
-    inputs: [
-      { name: "loanId", type: "uint256", indexed: true },
-      { name: "offerId", type: "uint256", indexed: true },
-      { name: "borrower", type: "address", indexed: true },
-      { name: "lender", type: "address", indexed: false },
-      { name: "tokenId", type: "uint96", indexed: false },
-      { name: "principal", type: "uint128", indexed: false },
-      { name: "repayAmount", type: "uint128", indexed: false },
-      { name: "fee", type: "uint128", indexed: false },
-      { name: "dueAt", type: "uint64", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "OfferCreated",
-    inputs: [
-      { name: "offerId", type: "uint256", indexed: true },
-      { name: "lender", type: "address", indexed: true },
-      { name: "principal", type: "uint128", indexed: false },
-      { name: "interestBps", type: "uint16", indexed: false },
-      { name: "duration", type: "uint32", indexed: false },
-      { name: "expiresAt", type: "uint64", indexed: false },
-      { name: "mode", type: "uint8", indexed: false },
-      { name: "tokenId", type: "uint96", indexed: false },
-    ],
   },
 ] as const;
