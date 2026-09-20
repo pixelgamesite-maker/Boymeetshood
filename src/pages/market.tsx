@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { formatUsdgLabel } from "@/lib/format";
+import { formatAmountLabel } from "@/lib/format";
+import { CURRENCY_LABEL, type Currency } from "@/types/lending";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import {
@@ -224,7 +225,7 @@ function BorrowView() {
                 onClaim={() => {}}
                 onRepay={async () => {
                   setBusyId(loan.id);
-                  const ok = await repay.run(loan.id);
+                  const ok = await repay.run(loan.id, loan.currency);
                   setBusyId(null);
                   if (ok) refreshAll();
                 }}
@@ -296,7 +297,7 @@ function LendView() {
                 onCancel={() => {}}
                 onFund={async () => {
                   setBusyId(request.id);
-                  const ok = await fundRequest.run(request.id, request.principal);
+                  const ok = await fundRequest.run(request.id, request.principal, request.currency);
                   setBusyId(null);
                   if (ok) refreshAll();
                 }}
@@ -386,33 +387,41 @@ function ClaimEarnings() {
   const owed = useOwed();
   const withdraw = useWithdraw();
 
-  const amount = owed.data ?? 0n;
-  if (owed.loading || amount === 0n) return null;
+  const balances = owed.data;
+  if (owed.loading || !balances) return null;
+
+  const rows = (["usdg", "eth"] as Currency[]).filter((c) => balances[c] > 0n);
+  if (rows.length === 0) return null;
 
   return (
-    <div
-      className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] p-6"
-      style={{ background: "var(--ink-2)", border: "1px solid var(--lime)" }}
-    >
-      <div>
-        <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
-          Ready to claim
-        </p>
-        <p
-          className="m-0 mt-1 text-[24px] font-extrabold leading-none"
-          style={{ fontFamily: "var(--mono)", color: "var(--lime)" }}
+    <div className="flex flex-col gap-3">
+      {rows.map((currency) => (
+        <div
+          key={currency}
+          className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] p-6"
+          style={{ background: "var(--ink-2)", border: "1px solid var(--lime)" }}
         >
-          {formatUsdgLabel(amount)}
-        </p>
-      </div>
-      <Button
-        onClick={async () => {
-          if (await withdraw.run()) owed.refetch();
-        }}
-        disabled={withdraw.pending}
-      >
-        {withdraw.pending ? "Claiming…" : "Claim earnings"}
-      </Button>
+          <div>
+            <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
+              Ready to claim
+            </p>
+            <p
+              className="m-0 mt-1 text-[24px] font-extrabold leading-none"
+              style={{ fontFamily: "var(--mono)", color: "var(--lime)" }}
+            >
+              {formatAmountLabel(balances[currency], currency)}
+            </p>
+          </div>
+          <Button
+            onClick={async () => {
+              if (await withdraw.run(currency)) owed.refetch();
+            }}
+            disabled={withdraw.pending}
+          >
+            {withdraw.pending ? "Claiming…" : `Claim ${CURRENCY_LABEL[currency]}`}
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }
