@@ -1,4 +1,8 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { readContract } from "wagmi/actions";
+import { wagmiConfig } from "@/lib/wagmi";
+import { CONTRACTS } from "@/lib/contracts";
+import { erc721Abi } from "@/lib/abis/tokens";
 
 export function Panel({
   children,
@@ -173,18 +177,106 @@ export function ErrorState({
   );
 }
 
-/** The Boy's art slot. Swap the gradient for the real tokenURI image later. */
+/**
+ * The Boy's art, read from the collection's tokenURI.
+ *
+ * Metadata is fetched once per token and cached for the page session, so the
+ * same Boy appearing in a picker, a card and a loan row costs one round trip.
+ * Falls back to a coloured tile while loading or if anything fails — a broken
+ * image icon looks like a bug, a tile looks deliberate.
+ */
+
+const imageCache = new Map<number, string | null>();
+const inFlight = new Map<number, Promise<string | null>>();
+
+/** ipfs://… and ar://… aren't URLs a browser can fetch. */
+function toHttp(uri: string): string {
+  if (uri.startsWith("ipfs://")) {
+    return `https://ipfs.io/ipfs/${uri.slice(7).replace(/^ipfs\//, "")}`;
+  }
+  if (uri.startsWith("ar://")) return `https://arweave.net/${uri.slice(5)}`;
+  return uri;
+}
+
+async function loadImage(tokenId: number): Promise<string | null> {
+  const cached = imageCache.get(tokenId);
+  if (cached !== undefined) return cached;
+
+  const existing = inFlight.get(tokenId);
+  if (existing) return existing;
+
+  const task = (async () => {
+    try {
+      const uri = await readContract(wagmiConfig, {
+        address: CONTRACTS.boys,
+        abi: erc721Abi,
+        functionName: "tokenURI",
+        args: [BigInt(tokenId)],
+      });
+
+      let metadata: { image?: string; image_url?: string };
+
+      if (uri.startsWith("data:application/json;base64,")) {
+        metadata = JSON.parse(atob(uri.split(",")[1]));
+      } else if (uri.startsWith("data:application/json,")) {
+        metadata = JSON.parse(decodeURIComponent(uri.split(",")[1]));
+      } else {
+        const res = await fetch(toHttp(uri));
+        if (!res.ok) throw new Error(String(res.status));
+        metadata = await res.json();
+      }
+
+      const image = metadata.image ?? metadata.image_url;
+      const resolved = image ? toHttp(image) : null;
+      imageCache.set(tokenId, resolved);
+      return resolved;
+    } catch {
+      imageCache.set(tokenId, null);
+      return null;
+    } finally {
+      inFlight.delete(tokenId);
+    }
+  })();
+
+  inFlight.set(tokenId, task);
+  return task;
+}
+
 export function BoyAvatar({ tokenId, size = 44 }: { tokenId: number; size?: number }) {
+  const [src, setSrc] = useState<string | null>(
+    () => imageCache.get(tokenId) ?? null,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    loadImage(tokenId).then((url) => {
+      if (!cancelled) setSrc(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenId]);
+
   const hue = (tokenId * 47) % 360;
+
   return (
     <div
-      className="flex-shrink-0 rounded-[10px]"
+      className="flex-shrink-0 overflow-hidden rounded-[10px]"
       style={{
         width: size,
         height: size,
         background: `linear-gradient(145deg, hsl(${hue} 85% 62%), hsl(${(hue + 70) % 360} 80% 52%))`,
       }}
-      aria-hidden="true"
-    />
+    >
+      {src && (
+        <img
+          src={src}
+          alt={`Boy #${tokenId}`}
+          loading="lazy"
+          className="h-full w-full object-cover"
+          onError={() => setSrc(null)}
+        />
+      )}
+    </div>
   );
 }
