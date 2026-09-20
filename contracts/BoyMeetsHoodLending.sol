@@ -12,32 +12,32 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 /**
  * @title BoyMeetsHoodLending
  * @notice Peer-to-peer NFT-collateralised lending for a single ERC-721
- *         collection, settled in a single ERC-20 (USDG).
+ *         collection, denominated in either USDG or native ETH.
  *
- * Two ways in, because both sides of a market need to be able to start one:
+ * Two ways in:
+ *   REQUESTS — a holder escrows Boys and names what they want for them. Any
+ *   wallet can fund it. The borrower needs no capital, only gas.
+ *   OFFERS — a lender escrows funds and names what they'll lend against how
+ *   many Boys. Any holder can take it.
  *
- *   REQUESTS — a holder escrows one or more Boys and says what they want for
- *   them: amount, interest, term. Any wallet with USDG can fund it. This is
- *   the "I need funds today" path, and it needs no USDG from the borrower.
+ * Currency is per-post. A loan denominated in ETH is repaid in ETH: borrow
+ * 0.1 ETH, repay 0.1 ETH plus interest, whatever the dollar price does in
+ * between. Nothing is converted and no oracle is consulted.
  *
- *   OFFERS — a lender escrows USDG and says what they'll lend against how
- *   many Boys. Any holder can take it. This is the "liquidity waiting on the
- *   book" path, and it needs no Boy from the lender.
+ * Three safety choices worth knowing:
  *
- * Either way the result is the same Loan, repaid the same way.
+ *   1. PULL PAYMENTS for everything owed to a lender or the treasury. USDG
+ *      can freeze addresses and a contract can reject ETH; pushing would let
+ *      either block a borrower's repayment and cost them their collateral.
  *
- * Bundles: collateral is an array throughout. Repayment releases every token;
- * default transfers every token. All or nothing, never partial.
+ *   2. PAY-OR-CREDIT for money going to a borrower. Their funds are sent
+ *      directly, but if a native transfer fails the amount is credited
+ *      instead of reverting — a lender funding a request must never have
+ *      their transaction fail because of the borrower's wallet.
  *
- * No oracle and no floor-price check. Both sides set their own terms and can
- * see the market before they commit. A floor feed for a 2,666-piece
- * collection is thin enough to manipulate, and enforcing one on-chain would
- * make the protocol only as trustworthy as the feed.
- *
- * Funds are credited rather than pushed (see withdraw), and collateral is
- * released with transferFrom rather than safeTransferFrom. Both exist so that
- * a frozen USDG address or a contract that can't receive ERC-721s can never
- * trap someone else's assets.
+ *   3. transferFrom, NOT safeTransferFrom, when releasing collateral. A
+ *      lender may be a multisig with no onERC721Received; the receiver check
+ *      is worth less than the guarantee that collateral can always leave.
  *
  * ⚠️ UNAUDITED. Holds user funds and user NFTs.
  */
@@ -51,6 +51,11 @@ contract BoyMeetsHoodLending is
 
     /* ─────────────────────────────── Types ─────────────────────────────── */
 
+    enum Currency {
+        USDG,
+        ETH
+    }
+
     enum Status {
         None,
         Active,
@@ -58,24 +63,24 @@ contract BoyMeetsHoodLending is
         Defaulted
     }
 
-    /// Posted by a borrower. Collateral is already in escrow.
     struct Request {
         address borrower;
-        uint128 principal; // USDG wanted
-        uint16 interestBps; // interest for the full term
-        uint32 duration; // seconds
-        uint64 expiresAt; // 0 = never
-        bool active;
-    }
-
-    /// Posted by a lender. USDG is already in escrow.
-    struct Offer {
-        address lender;
-        uint128 principal; // USDG on the table
+        uint128 principal;
         uint16 interestBps;
         uint32 duration;
         uint64 expiresAt; // 0 = never
-        uint8 tokenCount; // how many Boys the borrower must pledge
+        Currency currency;
+        bool active;
+    }
+
+    struct Offer {
+        address lender;
+        uint128 principal;
+        uint16 interestBps;
+        uint32 duration;
+        uint64 expiresAt; // 0 = never
+        uint8 tokenCount;
+        Currency currency;
         bool active;
     }
 
@@ -87,13 +92,14 @@ contract BoyMeetsHoodLending is
         uint128 fee; // protocol fee, owed to the treasury
         uint64 startedAt;
         uint64 dueAt;
+        Currency currency;
         Status status;
     }
 
     /* ────────────────────────────── Storage ────────────────────────────── */
 
     IERC721 public immutable collection;
-    IERC20 public immutable currency;
+    IERC20 public immutable usdg;
 
     uint16 public feeBps;
     uint16 public constant MAX_FEE_BPS = 500; // 5%
@@ -106,6 +112,10 @@ contract BoyMeetsHoodLending is
     /// release, which would strand every token in it.
     uint8 public constant MAX_BUNDLE = 20;
 
+    /// Gas forwarded on a native payout. Enough for a normal receive hook,
+    /// not enough for a recipient to do anything expensive on our gas.
+    uint256 private constant PAYOUT_GAS = 30_000;
+
     address public treasury;
 
     uint256 public nextRequestId = 1;
@@ -116,12 +126,12 @@ contract BoyMeetsHoodLending is
     mapping(uint256 => Offer) public offers;
     mapping(uint256 => Loan) public loans;
 
-    /// Collateral for each request and each loan.
     mapping(uint256 => uint256[]) private _requestTokens;
     mapping(uint256 => uint256[]) private _loanTokens;
 
-    /// USDG credited but not yet withdrawn.
-    mapping(address => uint256) public owed;
+    /// Credited but not yet withdrawn, per currency.
+    mapping(address => uint256) public owedUsdg;
+    mapping(address => uint256) public owedEth;
 
     /* ─────────────────────────────── Events ────────────────────────────── */
 
@@ -132,7 +142,8 @@ contract BoyMeetsHoodLending is
         uint128 principal,
         uint16 interestBps,
         uint32 duration,
-        uint64 expiresAt
+        uint64 expiresAt,
+        Currency currency
     );
     event RequestCancelled(uint256 indexed requestId, address indexed borrower);
     event OfferCreated(
@@ -142,7 +153,8 @@ contract BoyMeetsHoodLending is
         uint16 interestBps,
         uint32 duration,
         uint64 expiresAt,
-        uint8 tokenCount
+        uint8 tokenCount,
+        Currency currency
     );
     event OfferCancelled(uint256 indexed offerId, address indexed lender);
     event LoanStarted(
@@ -153,16 +165,12 @@ contract BoyMeetsHoodLending is
         uint128 principal,
         uint128 repayAmount,
         uint128 fee,
-        uint64 dueAt
+        uint64 dueAt,
+        Currency currency
     );
-    event LoanRepaid(
-        uint256 indexed loanId,
-        address indexed borrower,
-        uint128 repayAmount,
-        uint128 fee
-    );
+    event LoanRepaid(uint256 indexed loanId, address indexed borrower);
     event LoanDefaulted(uint256 indexed loanId, address indexed lender);
-    event Withdrawn(address indexed account, uint256 amount);
+    event Withdrawn(address indexed account, Currency currency, uint256 amount);
     event FeeUpdated(uint16 feeBps);
     event TreasuryUpdated(address treasury);
 
@@ -175,6 +183,7 @@ contract BoyMeetsHoodLending is
     error BadFee();
     error BadExpiry();
     error BadBundle();
+    error BadValue();
     error Inactive();
     error Expired();
     error NotOwnerOfPost();
@@ -186,25 +195,26 @@ contract BoyMeetsHoodLending is
     error DeadlinePassed();
     error DeadlineNotPassed();
     error NothingOwed();
+    error TransferFailed();
 
     /* ──────────────────────────── Construction ─────────────────────────── */
 
     constructor(
         address _collection,
-        address _currency,
+        address _usdg,
         address _treasury,
         uint16 _feeBps,
         address _owner
     ) Ownable(_owner) {
         if (
             _collection == address(0) ||
-            _currency == address(0) ||
+            _usdg == address(0) ||
             _treasury == address(0)
         ) revert ZeroAddress();
         if (_feeBps > MAX_FEE_BPS) revert BadFee();
 
         collection = IERC721(_collection);
-        currency = IERC20(_currency);
+        usdg = IERC20(_usdg);
         treasury = _treasury;
         feeBps = _feeBps;
     }
@@ -212,8 +222,8 @@ contract BoyMeetsHoodLending is
     /* ───────────────────── Borrower posts a request ────────────────────── */
 
     /**
-     * @notice Escrow Boys and ask for USDG against them.
-     * @dev Needs no USDG — only gas. Caller must own every token and have
+     * @notice Escrow Boys and ask for funds against them.
+     * @dev Needs no capital, only gas. Caller must own every token and have
      *      approved this contract for the collection.
      */
     function createRequest(
@@ -221,7 +231,8 @@ contract BoyMeetsHoodLending is
         uint128 principal,
         uint16 interestBps,
         uint32 duration,
-        uint64 expiresAt
+        uint64 expiresAt,
+        Currency currency
     ) external nonReentrant whenNotPaused returns (uint256 requestId) {
         _validateTerms(principal, interestBps, duration, expiresAt);
         if (tokenIds.length == 0 || tokenIds.length > MAX_BUNDLE) {
@@ -235,6 +246,7 @@ contract BoyMeetsHoodLending is
             interestBps: interestBps,
             duration: duration,
             expiresAt: expiresAt,
+            currency: currency,
             active: true
         });
 
@@ -253,7 +265,8 @@ contract BoyMeetsHoodLending is
             principal,
             interestBps,
             duration,
-            expiresAt
+            expiresAt,
+            currency
         );
     }
 
@@ -270,11 +283,13 @@ contract BoyMeetsHoodLending is
     }
 
     /**
-     * @notice Fund someone's request. USDG goes to them, the loan starts.
-     * @dev Caller must have approved `principal` of `currency`.
+     * @notice Fund someone's request. Funds go to them, the loan starts.
+     * @dev For an ETH request, send exactly `principal` as msg.value. For a
+     *      USDG request, send no value and approve `principal` first.
      */
     function fundRequest(uint256 requestId)
         external
+        payable
         nonReentrant
         whenNotPaused
         returns (uint256 loanId)
@@ -287,33 +302,40 @@ contract BoyMeetsHoodLending is
         if (request.borrower == msg.sender) revert SelfDeal();
 
         request.active = false;
+        Currency currency = request.currency;
+        uint128 principal = request.principal;
+        address borrower = request.borrower;
+
+        _collect(currency, principal);
 
         loanId = _openLoan(
             msg.sender,
-            request.borrower,
-            request.principal,
+            borrower,
+            principal,
             request.interestBps,
             request.duration,
+            currency,
             _requestTokens[requestId]
         );
 
-        currency.safeTransferFrom(msg.sender, request.borrower, request.principal);
+        _payOut(currency, borrower, principal);
     }
 
     /* ─────────────────────── Lender posts an offer ─────────────────────── */
 
     /**
-     * @notice Escrow USDG and wait for a holder to take it.
-     * @param tokenCount How many Boys the borrower must pledge. The borrower
-     *                   chooses which.
+     * @notice Escrow funds and wait for a holder to take them.
+     * @param tokenCount How many Boys the borrower must pledge.
+     * @dev For an ETH offer, send exactly `principal` as msg.value.
      */
     function createOffer(
         uint128 principal,
         uint16 interestBps,
         uint32 duration,
         uint64 expiresAt,
-        uint8 tokenCount
-    ) external nonReentrant whenNotPaused returns (uint256 offerId) {
+        uint8 tokenCount,
+        Currency currency
+    ) external payable nonReentrant whenNotPaused returns (uint256 offerId) {
         _validateTerms(principal, interestBps, duration, expiresAt);
         if (tokenCount == 0 || tokenCount > MAX_BUNDLE) revert BadBundle();
 
@@ -325,10 +347,11 @@ contract BoyMeetsHoodLending is
             duration: duration,
             expiresAt: expiresAt,
             tokenCount: tokenCount,
+            currency: currency,
             active: true
         });
 
-        currency.safeTransferFrom(msg.sender, address(this), principal);
+        _collect(currency, principal);
 
         emit OfferCreated(
             offerId,
@@ -337,7 +360,8 @@ contract BoyMeetsHoodLending is
             interestBps,
             duration,
             expiresAt,
-            tokenCount
+            tokenCount,
+            currency
         );
     }
 
@@ -348,7 +372,7 @@ contract BoyMeetsHoodLending is
         if (offer.lender != msg.sender) revert NotOwnerOfPost();
 
         offer.active = false;
-        owed[msg.sender] += offer.principal;
+        _credit(offer.currency, msg.sender, offer.principal);
 
         emit OfferCancelled(offerId, msg.sender);
     }
@@ -385,21 +409,23 @@ contract BoyMeetsHoodLending is
             offer.principal,
             offer.interestBps,
             offer.duration,
+            offer.currency,
             stored
         );
 
-        currency.safeTransfer(msg.sender, offer.principal);
+        _payOut(offer.currency, msg.sender, offer.principal);
     }
 
     /* ──────────────────────────── Loan lifecycle ───────────────────────── */
 
     /**
      * @notice Repay in full and get every pledged Boy back.
-     * @dev Not callable after the deadline: a defaulted loan belongs to the
+     * @dev For an ETH loan, send exactly totalDue() as msg.value.
+     *      Not callable after the deadline: a defaulted loan belongs to the
      *      lender, and racing repay against claimDefault would make the
      *      outcome depend on mempool ordering.
      */
-    function repay(uint256 loanId) external nonReentrant {
+    function repay(uint256 loanId) external payable nonReentrant {
         Loan storage loan = loans[loanId];
         if (loan.status != Status.Active) revert LoanNotActive();
         if (loan.borrower != msg.sender) revert NotBorrower();
@@ -407,26 +433,22 @@ contract BoyMeetsHoodLending is
 
         loan.status = Status.Repaid;
 
+        Currency currency = loan.currency;
         uint128 repayAmount = loan.repayAmount;
         uint128 fee = loan.fee;
 
-        owed[loan.lender] += repayAmount;
-        if (fee > 0) owed[treasury] += fee;
+        _credit(currency, loan.lender, repayAmount);
+        if (fee > 0) _credit(currency, treasury, fee);
 
-        currency.safeTransferFrom(
-            msg.sender,
-            address(this),
-            uint256(repayAmount) + fee
-        );
+        _collect(currency, uint256(repayAmount) + fee);
         _releaseTokens(_loanTokens[loanId], msg.sender);
 
-        emit LoanRepaid(loanId, msg.sender, repayAmount, fee);
+        emit LoanRepaid(loanId, msg.sender);
     }
 
     /**
      * @notice After the deadline, every pledged Boy goes to the lender.
-     * @dev Callable by anyone; collateral always goes to the lender, so a
-     *      lender without gas isn't stranded and nobody else gains by calling.
+     * @dev Callable by anyone; collateral always goes to the lender.
      */
     function claimDefault(uint256 loanId) external nonReentrant {
         Loan storage loan = loans[loanId];
@@ -439,15 +461,26 @@ contract BoyMeetsHoodLending is
         emit LoanDefaulted(loanId, loan.lender);
     }
 
-    /// @notice Pull whatever USDG is credited to the caller.
-    function withdraw() external nonReentrant returns (uint256 amount) {
-        amount = owed[msg.sender];
-        if (amount == 0) revert NothingOwed();
+    /// @notice Pull whatever is credited to the caller in one currency.
+    function withdraw(Currency currency)
+        external
+        nonReentrant
+        returns (uint256 amount)
+    {
+        if (currency == Currency.USDG) {
+            amount = owedUsdg[msg.sender];
+            if (amount == 0) revert NothingOwed();
+            owedUsdg[msg.sender] = 0;
+            usdg.safeTransfer(msg.sender, amount);
+        } else {
+            amount = owedEth[msg.sender];
+            if (amount == 0) revert NothingOwed();
+            owedEth[msg.sender] = 0;
+            (bool ok, ) = msg.sender.call{value: amount}("");
+            if (!ok) revert TransferFailed();
+        }
 
-        owed[msg.sender] = 0;
-        currency.safeTransfer(msg.sender, amount);
-
-        emit Withdrawn(msg.sender, amount);
+        emit Withdrawn(msg.sender, currency, amount);
     }
 
     /* ─────────────────────────────── Views ─────────────────────────────── */
@@ -460,11 +493,7 @@ contract BoyMeetsHoodLending is
         return _requestTokens[requestId];
     }
 
-    function loanTokens(uint256 loanId)
-        external
-        view
-        returns (uint256[] memory)
-    {
+    function loanTokens(uint256 loanId) external view returns (uint256[] memory) {
         return _loanTokens[loanId];
     }
 
@@ -474,7 +503,6 @@ contract BoyMeetsHoodLending is
         return uint256(loan.repayAmount) + loan.fee;
     }
 
-    /// @notice True once a loan is past its deadline and claimable.
     function isDefaulted(uint256 loanId) external view returns (bool) {
         Loan memory loan = loans[loanId];
         return loan.status == Status.Active && block.timestamp > loan.dueAt;
@@ -496,17 +524,50 @@ contract BoyMeetsHoodLending is
         if (expiresAt != 0 && expiresAt <= block.timestamp) revert BadExpiry();
     }
 
+    /// Take `amount` from the caller in `currency`, however that works.
+    function _collect(Currency currency, uint256 amount) private {
+        if (currency == Currency.ETH) {
+            if (msg.value != amount) revert BadValue();
+        } else {
+            if (msg.value != 0) revert BadValue();
+            usdg.safeTransferFrom(msg.sender, address(this), amount);
+        }
+    }
+
+    /// Credit an internal balance. Never pushes.
+    function _credit(Currency currency, address to, uint256 amount) private {
+        if (currency == Currency.ETH) {
+            owedEth[to] += amount;
+        } else {
+            owedUsdg[to] += amount;
+        }
+    }
+
+    /**
+     * Pay a borrower directly, falling back to a credit if a native send
+     * fails. A lender's funding transaction must not revert because of the
+     * borrower's wallet.
+     */
+    function _payOut(Currency currency, address to, uint256 amount) private {
+        if (currency == Currency.USDG) {
+            usdg.safeTransfer(to, amount);
+            return;
+        }
+
+        (bool ok, ) = to.call{value: amount, gas: PAYOUT_GAS}("");
+        if (!ok) owedEth[to] += amount;
+    }
+
     function _openLoan(
         address lender,
         address borrower,
         uint128 principal,
         uint16 interestBps,
         uint32 duration,
+        Currency currency,
         uint256[] storage tokenIds
     ) private returns (uint256 loanId) {
-        uint128 interest = uint128(
-            (uint256(principal) * interestBps) / 10_000
-        );
+        uint128 interest = uint128((uint256(principal) * interestBps) / 10_000);
         // Snapshot the fee so a later setFeeBps can't change what is owed.
         uint128 fee = uint128((uint256(principal) * feeBps) / 10_000);
         uint64 dueAt = uint64(block.timestamp + duration);
@@ -520,10 +581,11 @@ contract BoyMeetsHoodLending is
             fee: fee,
             startedAt: uint64(block.timestamp),
             dueAt: dueAt,
+            currency: currency,
             status: Status.Active
         });
 
-        // Requests hold their collateral under the request id; move it across.
+        // Requests hold collateral under the request id; copy it across.
         uint256[] storage loanTokenList = _loanTokens[loanId];
         if (loanTokenList.length == 0) {
             for (uint256 i; i < tokenIds.length; ++i) {
@@ -539,7 +601,8 @@ contract BoyMeetsHoodLending is
             principal,
             principal + interest,
             fee,
-            dueAt
+            dueAt,
+            currency
         );
     }
 
@@ -566,8 +629,8 @@ contract BoyMeetsHoodLending is
 
     /**
      * @notice Stop new requests, offers and loans.
-     * @dev repay(), claimDefault(), withdraw(), cancelRequest() and
-     *      cancelOffer() stay open. A pause must never trap collateral.
+     * @dev repay(), claimDefault(), withdraw() and both cancels stay open. A
+     *      pause must never trap collateral.
      */
     function pause() external onlyOwner {
         _pause();
