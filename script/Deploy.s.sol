@@ -35,12 +35,19 @@ contract Deploy is Script {
      */
     uint16 constant FEE_BPS = 0;
 
-    function run() external returns (BoyMeetsHoodLending lending) {
-        // The owner is whoever holds the deploying key. This address can set
-        // the fee, change the treasury, and pause — keep it safe, and move it
-        // to a multisig before there is real volume.
-        address owner = msg.sender;
+    /**
+     * Contract owner: can setFeeBps, setTreasury and pause.
+     *
+     * Set explicitly rather than read from msg.sender — inside a forge script,
+     * msg.sender before vm.startBroadcast() is Foundry's default sender
+     * (0x1804c8AB...), not your wallet, which would silently deploy with the
+     * wrong owner.
+     *
+     * ⚠️ EDIT THIS to the address you want owning the contract.
+     */
+    address constant OWNER = 0x05a04a21A20905cF37AE46fBc2a83A3774dbffD2;
 
+    function run() external returns (BoyMeetsHoodLending lending) {
         vm.startBroadcast();
 
         lending = new BoyMeetsHoodLending(
@@ -48,7 +55,7 @@ contract Deploy is Script {
             CURRENCY,
             TREASURY,
             FEE_BPS,
-            owner
+            OWNER
         );
 
         vm.stopBroadcast();
@@ -58,6 +65,6 @@ contract Deploy is Script {
         console.log("currency:          ", CURRENCY);
         console.log("treasury:          ", TREASURY);
         console.log("feeBps:            ", FEE_BPS);
-        console.log("owner:             ", owner);
+        console.log("owner:             ", OWNER);
     }
 }
