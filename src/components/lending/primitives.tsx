@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { readContract } from "wagmi/actions";
 import { wagmiConfig } from "@/lib/wagmi";
 import { CONTRACTS } from "@/lib/contracts";
@@ -177,33 +177,66 @@ export function ErrorState({
   );
 }
 
-/**
- * The Boy's art, read from the collection's tokenURI.
+/* ── Boy metadata ─────────────────────────────────────────────────────────
+ * Read from the collection's tokenURI once per token, cached for the page
+ * session, so the same Boy in a picker, a request and a loan costs one fetch.
  *
- * Metadata is fetched once per token and cached for the page session, so the
- * same Boy appearing in a picker, a card and a loan row costs one round trip.
- * Falls back to a coloured tile while loading or if anything fails — a broken
- * image icon looks like a bug, a tile looks deliberate.
+ * IPFS is served through several public gateways, tried in order. Any single
+ * public gateway is slow or rate-limited often enough that relying on one
+ * means art that loads for you and not for someone else.
  */
 
-const imageCache = new Map<number, string | null>();
-const inFlight = new Map<number, Promise<string | null>>();
+const GATEWAYS = [
+  "https://ipfs.io/ipfs/",
+  "https://dweb.link/ipfs/",
+  "https://nftstorage.link/ipfs/",
+  "https://gateway.pinata.cloud/ipfs/",
+];
 
-/** ipfs://… and ar://… aren't URLs a browser can fetch. */
-function toHttp(uri: string): string {
-  if (uri.startsWith("ipfs://")) {
-    return `https://ipfs.io/ipfs/${uri.slice(7).replace(/^ipfs\//, "")}`;
-  }
-  if (uri.startsWith("ar://")) return `https://arweave.net/${uri.slice(5)}`;
-  return uri;
+export interface BoyMeta {
+  name: string;
+  /** Candidate URLs for the image, best first. */
+  images: string[];
 }
 
-async function loadImage(tokenId: number): Promise<string | null> {
-  const cached = imageCache.get(tokenId);
-  if (cached !== undefined) return cached;
+const metaCache = new Map<number, BoyMeta>();
+const metaInFlight = new Map<number, Promise<BoyMeta>>();
 
-  const existing = inFlight.get(tokenId);
+/** Every URL a URI could be fetched from, best first. */
+function candidates(uri: string): string[] {
+  if (uri.startsWith("ipfs://")) {
+    const path = uri.slice(7).replace(/^ipfs\//, "");
+    return GATEWAYS.map((g) => g + path);
+  }
+  if (uri.startsWith("ar://")) return [`https://arweave.net/${uri.slice(5)}`];
+  return [uri];
+}
+
+async function fetchJson(urls: string[]): Promise<Record<string, unknown>> {
+  let lastError: unknown;
+  for (const url of urls) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) return await res.json();
+      lastError = new Error(String(res.status));
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError;
+}
+
+export function loadBoyMeta(tokenId: number): Promise<BoyMeta> {
+  const cached = metaCache.get(tokenId);
+  if (cached) return Promise.resolve(cached);
+
+  const existing = metaInFlight.get(tokenId);
   if (existing) return existing;
+
+  const fallback: BoyMeta = { name: `BoyMeetsH00d #${tokenId}`, images: [] };
 
   const task = (async () => {
     try {
@@ -214,69 +247,201 @@ async function loadImage(tokenId: number): Promise<string | null> {
         args: [BigInt(tokenId)],
       });
 
-      let metadata: { image?: string; image_url?: string };
-
+      let json: Record<string, unknown>;
       if (uri.startsWith("data:application/json;base64,")) {
-        metadata = JSON.parse(atob(uri.split(",")[1]));
+        json = JSON.parse(atob(uri.split(",")[1]));
       } else if (uri.startsWith("data:application/json,")) {
-        metadata = JSON.parse(decodeURIComponent(uri.split(",")[1]));
+        json = JSON.parse(decodeURIComponent(uri.split(",")[1]));
       } else {
-        const res = await fetch(toHttp(uri));
-        if (!res.ok) throw new Error(String(res.status));
-        metadata = await res.json();
+        json = await fetchJson(candidates(uri));
       }
 
-      const image = metadata.image ?? metadata.image_url;
-      const resolved = image ? toHttp(image) : null;
-      imageCache.set(tokenId, resolved);
-      return resolved;
+      const image = (json.image ?? json.image_url) as string | undefined;
+      const meta: BoyMeta = {
+        name: typeof json.name === "string" ? json.name : fallback.name,
+        images: image ? candidates(image) : [],
+      };
+      metaCache.set(tokenId, meta);
+      return meta;
     } catch {
-      imageCache.set(tokenId, null);
-      return null;
+      // Don't cache failures: a gateway hiccup shouldn't hide art all session.
+      return fallback;
     } finally {
-      inFlight.delete(tokenId);
+      metaInFlight.delete(tokenId);
     }
   })();
 
-  inFlight.set(tokenId, task);
+  metaInFlight.set(tokenId, task);
   return task;
 }
 
-export function BoyAvatar({ tokenId, size = 44 }: { tokenId: number; size?: number }) {
-  const [src, setSrc] = useState<string | null>(
-    () => imageCache.get(tokenId) ?? null,
+export function useBoyMeta(tokenId: number): BoyMeta | null {
+  const [meta, setMeta] = useState<BoyMeta | null>(
+    () => metaCache.get(tokenId) ?? null,
   );
 
   useEffect(() => {
     let cancelled = false;
-    loadImage(tokenId).then((url) => {
-      if (!cancelled) setSrc(url);
-    });
+    loadBoyMeta(tokenId).then((m) => !cancelled && setMeta(m));
     return () => {
       cancelled = true;
     };
   }, [tokenId]);
 
-  const hue = (tokenId * 47) % 360;
+  return meta;
+}
+
+/**
+ * The art itself. Walks through gateway candidates on error, and shows a
+ * shimmer while loading rather than a blank or a broken-image icon.
+ */
+export function BoyImage({
+  tokenId,
+  className = "",
+  style,
+}: {
+  tokenId: number;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const meta = useBoyMeta(tokenId);
+  const [attempt, setAttempt] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    setAttempt(0);
+    setLoaded(false);
+  }, [tokenId]);
+
+  const src = meta?.images[attempt];
+  const exhausted = meta !== null && attempt >= meta.images.length;
 
   return (
     <div
-      className="flex-shrink-0 overflow-hidden rounded-[10px]"
-      style={{
-        width: size,
-        height: size,
-        background: `linear-gradient(145deg, hsl(${hue} 85% 62%), hsl(${(hue + 70) % 360} 80% 52%))`,
-      }}
+      className={`relative overflow-hidden ${className}`}
+      style={{ background: "var(--ink-3)", ...style }}
     >
+      {!loaded && !exhausted && (
+        <div
+          className="absolute inset-0 animate-pulse"
+          style={{ background: "rgba(255,255,255,0.05)" }}
+          aria-hidden="true"
+        />
+      )}
+
+      {exhausted && (
+        <div
+          className="absolute inset-0 grid place-items-center text-center"
+          style={{ color: "var(--fg-faint)" }}
+        >
+          <span className="px-2 text-[11px] font-bold" style={{ fontFamily: "var(--mono)" }}>
+            #{tokenId}
+          </span>
+        </div>
+      )}
+
       {src && (
         <img
+          key={src}
           src={src}
-          alt={`Boy #${tokenId}`}
+          alt={meta?.name ?? `Boy #${tokenId}`}
           loading="lazy"
-          className="h-full w-full object-cover"
-          onError={() => setSrc(null)}
+          className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300"
+          style={{ opacity: loaded ? 1 : 0 }}
+          onLoad={() => setLoaded(true)}
+          onError={() => {
+            setLoaded(false);
+            setAttempt((a) => a + 1);
+          }}
         />
       )}
     </div>
+  );
+}
+
+/** Small square thumbnail — kept for compact places like loan rows. */
+export function BoyAvatar({ tokenId, size = 44 }: { tokenId: number; size?: number }) {
+  return (
+    <BoyImage
+      tokenId={tokenId}
+      className="flex-shrink-0 rounded-[10px]"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+/**
+ * The OpenSea-style card: big square art, name underneath. Selectable when
+ * given onToggle, with a lime ring and check when picked.
+ */
+export function BoyCard({
+  tokenId,
+  selected = false,
+  disabled = false,
+  onToggle,
+}: {
+  tokenId: number;
+  selected?: boolean;
+  disabled?: boolean;
+  onToggle?: () => void;
+}) {
+  const meta = useBoyMeta(tokenId);
+  const interactive = Boolean(onToggle);
+
+  const body = (
+    <>
+      <div className="relative">
+        <BoyImage tokenId={tokenId} className="aspect-square w-full" />
+        {selected && (
+          <span
+            className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full"
+            style={{ background: "var(--lime)", color: "var(--ink)" }}
+            aria-hidden="true"
+          >
+            <svg width="14" height="11" viewBox="0 0 14 11" fill="none">
+              <path d="M1.5 5.5L5 9L12.5 1.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        )}
+      </div>
+      <div className="px-3 py-2.5 text-left">
+        <p className="m-0 truncate text-[13px] font-extrabold leading-tight">
+          {meta?.name ?? `BoyMeetsH00d #${tokenId}`}
+        </p>
+        <p
+          className="m-0 mt-0.5 text-[11px]"
+          style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)" }}
+        >
+          #{tokenId}
+        </p>
+      </div>
+    </>
+  );
+
+  const frame: CSSProperties = {
+    background: "var(--ink-2)",
+    border: `2px solid ${selected ? "var(--lime)" : "var(--hairline)"}`,
+    opacity: disabled ? 0.35 : 1,
+  };
+
+  if (!interactive) {
+    return (
+      <div className="overflow-hidden rounded-[14px]" style={frame}>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      aria-pressed={selected}
+      className="overflow-hidden rounded-[14px] p-0 transition-transform hover:-translate-y-0.5"
+      style={{ ...frame, cursor: disabled ? "not-allowed" : "pointer", color: "#fff" }}
+    >
+      {body}
+    </button>
   );
 }
