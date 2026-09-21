@@ -18,7 +18,7 @@ import {
   timeLeft,
 } from "@/lib/format";
 import { useNow } from "@/hooks/useLending";
-import { BoyAvatar, Button, Panel, Pill, Stat } from "@/components/lending/primitives";
+import { BoyCard, Button, Panel, Pill, Stat } from "@/components/lending/primitives";
 
 /* ── Shared controls ─────────────────────────────────────────────────────*/
 
@@ -78,31 +78,17 @@ function BoyPicker({
   }
 
   return (
-    <div className="flex flex-wrap gap-2.5">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {boys.map((boy) => {
         const active = selected.includes(boy.tokenId);
-        const full = selected.length >= max && !active;
         return (
-          <button
+          <BoyCard
             key={boy.tokenId}
-            type="button"
-            onClick={() => onToggle(boy.tokenId)}
-            disabled={full}
-            aria-pressed={active}
-            className="flex items-center gap-2.5 rounded-[12px] p-2 pr-3.5"
-            style={{
-              background: active ? "var(--lime)" : "rgba(255,255,255,0.06)",
-              color: active ? "var(--ink)" : "#fff",
-              border: "none",
-              opacity: full ? 0.35 : 1,
-              cursor: full ? "not-allowed" : "pointer",
-            }}
-          >
-            <BoyAvatar tokenId={boy.tokenId} size={32} />
-            <span className="text-[13px] font-bold" style={{ fontFamily: "var(--mono)" }}>
-              #{boy.tokenId}
-            </span>
-          </button>
+            tokenId={boy.tokenId}
+            selected={active}
+            disabled={selected.length >= max && !active}
+            onToggle={() => onToggle(boy.tokenId)}
+          />
         );
       })}
     </div>
@@ -250,7 +236,7 @@ export function CreateRequestForm({
             style={{ color: "var(--fg-dim)" }}
           >
             Pick what you'll pledge, name your price, post it. You need no
-            capital to do this only gas. Your Boys sit in escrow until someone
+            capital to do this, only gas. Your Boys sit in escrow until someone
             funds you, or until you cancel.
           </p>
         </div>
@@ -477,18 +463,9 @@ export function CreateOfferForm({
 
 function TokenStrip({ tokenIds }: { tokenIds: number[] }) {
   return (
-    <div className="mt-5 flex flex-wrap gap-2">
+    <div className="mt-5 grid grid-cols-3 gap-2.5 sm:grid-cols-5">
       {tokenIds.map((tokenId) => (
-        <span
-          key={tokenId}
-          className="flex items-center gap-2 rounded-[10px] px-2.5 py-1.5"
-          style={{ background: "rgba(255,255,255,0.05)" }}
-        >
-          <BoyAvatar tokenId={tokenId} size={22} />
-          <span className="text-[12px] font-bold" style={{ fontFamily: "var(--mono)" }}>
-            #{tokenId}
-          </span>
-        </span>
+        <BoyCard key={tokenId} tokenId={tokenId} />
       ))}
     </div>
   );
