@@ -250,7 +250,7 @@ export function CreateRequestForm({
             style={{ color: "var(--fg-dim)" }}
           >
             Pick what you'll pledge, name your price, post it. You need no
-            capital to do this — only gas. Your Boys sit in escrow until someone
+            capital to do this only gas. Your Boys sit in escrow until someone
             funds you, or until you cancel.
           </p>
         </div>
