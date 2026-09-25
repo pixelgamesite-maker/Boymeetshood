@@ -42,7 +42,10 @@ export default function Home() {
 
 function Hero() {
   return (
-    <section className="relative overflow-hidden px-5 pb-20 pt-[130px] sm:px-8 sm:pb-24 sm:pt-[160px]">
+    <section
+      className="relative overflow-hidden px-5 pb-20 pt-[130px] sm:px-8 sm:pb-24 sm:pt-[160px]"
+      style={{ zIndex: 0 }}
+    >
       <img
         src={ART.hero}
         alt=""
