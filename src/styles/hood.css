@@ -167,6 +167,52 @@ body {
   );
 }
 
+/* ── Art reveal ───────────────────────────────────────────────────────────
+   A scan-in for images below the fold: a few horizontal bands sweep open
+   with a brief blur/desaturate, echoing the scanline and boot-screen motifs
+   used elsewhere on the site. One idea, reused deliberately, rather than a
+   generic fade-and-slide on every section. Runs once per image on first
+   scroll into view. */
+
+@keyframes art-reveal {
+  0% {
+    opacity: 0;
+    filter: blur(10px) saturate(0.35);
+    clip-path: inset(0 0 100% 0);
+    transform: scale(1.04);
+  }
+  10% {
+    opacity: 1;
+    clip-path: inset(0 0 74% 0);
+  }
+  26% {
+    clip-path: inset(0 0 42% 0);
+    transform: translateX(-5px) scale(1.025);
+  }
+  40% {
+    clip-path: inset(0 0 14% 0);
+    transform: translateX(4px) scale(1.015);
+  }
+  55% {
+    clip-path: inset(0 0 0 0);
+    filter: blur(2px) saturate(0.75);
+    transform: translateX(0) scale(1.005);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0) saturate(1);
+    clip-path: inset(0 0 0 0);
+    transform: scale(1);
+  }
+}
+
+.art-reveal {
+  opacity: 0;
+}
+.art-reveal.art-reveal--in {
+  animation: art-reveal 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .rise, .ticket-drop {
@@ -175,5 +221,13 @@ body {
   }
   .ticket-drop { transform: rotate(-2.2deg); }
   .tool-card, .tool-card img { transition: none; }
+  .art-reveal,
+  .art-reveal.art-reveal--in {
+    animation: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+    clip-path: none !important;
+    transform: none !important;
+  }
   *, *::before, *::after { transition-duration: 0.01ms !important; }
 }
