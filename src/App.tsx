@@ -50,7 +50,7 @@ function App() {
             <Route path="/" component={Home} />
             <Route path="/p2p" component={Market} />
             <Route path="/about" component={About} />
-            <Route path="/pool" component={ComingSoon} />
+            <Route path="/juice" component={ComingSoon} />
             <Route path="/treasury" component={ComingSoon} />
             <Route path="/automint" component={ComingSoon} />
             <Route component={NotFound} />
