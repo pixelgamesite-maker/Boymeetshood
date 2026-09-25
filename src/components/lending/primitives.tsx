@@ -193,6 +193,14 @@ const GATEWAYS = [
   "https://gateway.pinata.cloud/ipfs/",
 ];
 
+/**
+ * Every Boy mirrored on Supabase. Tried last, but it's the only source with
+ * predictable latency — public IPFS gateways are slow or rate-limited often
+ * enough that art loading at all shouldn't depend on them.
+ */
+const MIRROR = (tokenId: number) =>
+  `https://vcxixncpxesnxbevxmyw.supabase.co/storage/v1/object/public/boy/nft_${tokenId}.png`;
+
 export interface BoyMeta {
   name: string;
   /** Candidate URLs for the image, best first. */
@@ -236,7 +244,10 @@ export function loadBoyMeta(tokenId: number): Promise<BoyMeta> {
   const existing = metaInFlight.get(tokenId);
   if (existing) return existing;
 
-  const fallback: BoyMeta = { name: `BoyMeetsH00d #${tokenId}`, images: [] };
+  const fallback: BoyMeta = {
+    name: `BoyMeetsH00d #${tokenId}`,
+    images: [MIRROR(tokenId)],
+  };
 
   const task = (async () => {
     try {
@@ -259,7 +270,7 @@ export function loadBoyMeta(tokenId: number): Promise<BoyMeta> {
       const image = (json.image ?? json.image_url) as string | undefined;
       const meta: BoyMeta = {
         name: typeof json.name === "string" ? json.name : fallback.name,
-        images: image ? candidates(image) : [],
+        images: [...(image ? candidates(image) : []), MIRROR(tokenId)],
       };
       metaCache.set(tokenId, meta);
       return meta;
