@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
@@ -13,6 +13,61 @@ import {
   TOOLS,
   type Tool,
 } from "@/lib/site";
+
+/**
+ * Scan-in reveal for artwork below the toolkit. Triggers once per image on
+ * first scroll into view, then disconnects — this isn't a general-purpose
+ * "everything fades up" pattern, just the one signature treatment for
+ * photographic art on this page.
+ */
+function useRevealed<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [revealed, setRevealed] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setRevealed(true);
+          obs.unobserve(el);
+        }
+      },
+      { threshold: 0.2, rootMargin: "0px 0px -8% 0px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  return { ref, revealed };
+}
+
+function RevealArt({
+  src,
+  alt = "",
+  className = "",
+  style,
+  delay = 0,
+}: {
+  src: string;
+  alt?: string;
+  className?: string;
+  style?: CSSProperties;
+  delay?: number;
+}) {
+  const { ref, revealed } = useRevealed<HTMLImageElement>();
+  return (
+    <img
+      ref={ref}
+      src={src}
+      alt={alt}
+      loading="lazy"
+      className={`art-reveal ${revealed ? "art-reveal--in" : ""} ${className}`}
+      style={{ ...style, animationDelay: revealed ? `${delay}s` : undefined }}
+    />
+  );
+}
 
 export default function Home() {
   return (
@@ -289,11 +344,10 @@ function Gallery({
                 transform: i % 2 === 0 ? "rotate(-1.2deg)" : "rotate(1.2deg)",
               }}
             >
-              <img
+              <RevealArt
                 src={src}
-                alt=""
-                loading="lazy"
                 className="h-full w-full object-cover"
+                delay={i * 0.08}
               />
             </div>
           ))}
@@ -352,7 +406,11 @@ function Vision() {
                   transform: i === 0 ? "rotate(-2deg)" : "rotate(2deg)",
                 }}
               >
-                <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
+                <RevealArt
+                  src={src}
+                  className="h-full w-full object-cover"
+                  delay={i * 0.1}
+                />
               </div>
             ))}
           </div>
@@ -372,12 +430,7 @@ function TokenBoundAccounts() {
           className="overflow-hidden rounded-[24px]"
           style={{ border: "1px solid var(--hairline)", aspectRatio: "4/5" }}
         >
-          <img
-            src={ART.seated}
-            alt=""
-            loading="lazy"
-            className="h-full w-full object-cover"
-          />
+          <RevealArt src={ART.seated} className="h-full w-full object-cover" />
         </div>
 
         <div>
