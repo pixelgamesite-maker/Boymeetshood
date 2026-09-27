@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { formatAmountLabel } from "@/lib/format";
 import { CURRENCY_LABEL, type Currency } from "@/types/lending";
+import { useFloorPrice } from "@/hooks/useFloorPrice";
+import { LINKS } from "@/lib/site";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import {
@@ -51,6 +53,8 @@ export default function Market() {
           >
             P2P Lending
           </h1>
+
+          <FloorPriceStrip />
 
           <div
             className="mt-7 inline-flex gap-1 rounded-full p-1"
@@ -378,6 +382,61 @@ function LendView() {
 }
 
 /* ── Shared ──────────────────────────────────────────────────────────────*/
+
+/**
+ * Live collection floor, pulled from OpenSea. Purely informational — it's
+ * here so a borrower naming a price, or a lender sizing an offer, has a
+ * real number to work from. It never touches the contract.
+ */
+function FloorPriceStrip() {
+  const floor = useFloorPrice();
+
+  return (
+    <a
+      href={LINKS.opensea}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-5 flex flex-wrap items-center gap-2.5 no-underline"
+      style={{ color: "inherit" }}
+    >
+      <span
+        className="inline-flex h-2 w-2 rounded-full"
+        style={{
+          background: floor.data ? (floor.data.stale ? "var(--fg-faint)" : "var(--lime)") : "var(--fg-faint)",
+        }}
+      />
+      {floor.data ? (
+        <>
+          <span className="text-[13px]" style={{ color: "var(--fg-dim)" }}>
+            Collection floor
+          </span>
+          <span
+            className="text-[15px] font-extrabold"
+            style={{ fontFamily: "var(--mono)" }}
+          >
+            {floor.data.value} {floor.data.symbol}
+          </span>
+          {floor.data.stale && (
+            <span className="text-[12px]" style={{ color: "var(--fg-faint)" }}>
+              (last known — OpenSea unreachable)
+            </span>
+          )}
+          <span className="text-[12px] underline" style={{ color: "var(--fg-faint)" }}>
+            view on OpenSea
+          </span>
+        </>
+      ) : floor.loading ? (
+        <span className="text-[13px]" style={{ color: "var(--fg-faint)" }}>
+          Loading floor price…
+        </span>
+      ) : (
+        <span className="text-[13px]" style={{ color: "var(--fg-faint)" }}>
+          Floor price unavailable right now — check OpenSea directly
+        </span>
+      )}
+    </a>
+  );
+}
 
 /**
  * Repayments credit a balance rather than pushing USDG out, so lenders
