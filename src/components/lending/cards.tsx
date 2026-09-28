@@ -1,4 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import {
   CURRENCY_LABEL,
   type Currency,
@@ -17,7 +18,7 @@ import {
   shortAddress,
   timeLeft,
 } from "@/lib/format";
-import { useNow } from "@/hooks/useLending";
+import { useMyAddress, useNow } from "@/hooks/useLending";
 import { BoyCard, Button, Panel, Pill, Stat } from "@/components/lending/primitives";
 
 /* ── Shared controls ─────────────────────────────────────────────────────*/
@@ -205,6 +206,9 @@ export function CreateRequestForm({
   pending: boolean;
   error: string | null;
 }) {
+  const me = useMyAddress();
+  const { openConnectModal } = useConnectModal();
+
   const [selected, setSelected] = useState<number[]>([]);
   const [currency, setCurrency] = useState<Currency>("usdg");
   const [amount, setAmount] = useState("");
@@ -247,14 +251,20 @@ export function CreateRequestForm({
         <p className="m-0 mb-3 text-[12.5px] font-semibold" style={{ color: "var(--fg-dim)" }}>
           Collateral {selected.length > 0 && `· ${selected.length} selected`}
         </p>
-        <BoyPicker
-          boys={boys}
-          selected={selected}
-          max={MAX_BUNDLE}
-          onToggle={(id) =>
-            setSelected((s) => (s.includes(id) ? s.filter((t) => t !== id) : [...s, id]))
-          }
-        />
+        {me ? (
+          <BoyPicker
+            boys={boys}
+            selected={selected}
+            max={MAX_BUNDLE}
+            onToggle={(id) =>
+              setSelected((s) => (s.includes(id) ? s.filter((t) => t !== id) : [...s, id]))
+            }
+          />
+        ) : (
+          <p className="m-0 text-[13.5px]" style={{ color: "var(--fg-dim)" }}>
+            Connect your wallet to pick collateral from your Boys.
+          </p>
+        )}
       </div>
 
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
@@ -304,24 +314,27 @@ export function CreateRequestForm({
 
       <div className="mt-6">
         <Button
-          onClick={() =>
-            valid &&
-            principal &&
-            onSubmit({
-              tokenIds: selected,
-              principal,
-              interestBps,
-              durationSecs: duration,
-              currency,
-            })
-          }
-          disabled={!valid || pending}
+          onClick={() => {
+            if (!me) return openConnectModal?.();
+            if (valid && principal) {
+              onSubmit({
+                tokenIds: selected,
+                principal,
+                interestBps,
+                durationSecs: duration,
+                currency,
+              });
+            }
+          }}
+          disabled={me ? !valid || pending : false}
         >
-          {pending
-            ? "Posting…"
-            : selected.length === 0
-              ? "Pick your collateral"
-              : "Post request"}
+          {!me
+            ? "Connect wallet"
+            : pending
+              ? "Posting…"
+              : selected.length === 0
+                ? "Pick your collateral"
+                : "Post request"}
         </Button>
       </div>
     </Panel>
@@ -345,6 +358,9 @@ export function CreateOfferForm({
   pending: boolean;
   error: string | null;
 }) {
+  const me = useMyAddress();
+  const { openConnectModal } = useConnectModal();
+
   const [currency, setCurrency] = useState<Currency>("usdg");
   const [amount, setAmount] = useState("");
   const [interest, setInterest] = useState("10");
@@ -439,20 +455,21 @@ export function CreateOfferForm({
 
       <div className="mt-6">
         <Button
-          onClick={() =>
-            valid &&
-            principal &&
-            onSubmit({
-              principal,
-              interestBps,
-              durationSecs: duration,
-              tokenCount: count,
-              currency,
-            })
-          }
-          disabled={!valid || pending}
+          onClick={() => {
+            if (!me) return openConnectModal?.();
+            if (valid && principal) {
+              onSubmit({
+                principal,
+                interestBps,
+                durationSecs: duration,
+                tokenCount: count,
+                currency,
+              });
+            }
+          }}
+          disabled={me ? !valid || pending : false}
         >
-          {pending ? "Posting…" : "Post offer"}
+          {!me ? "Connect wallet" : pending ? "Posting…" : "Post offer"}
         </Button>
       </div>
     </Panel>
@@ -486,6 +503,8 @@ export function RequestCard({
   onFund: () => void;
   onCancel: () => void;
 }) {
+  const me = useMyAddress();
+  const { openConnectModal } = useConnectModal();
   const repay = request.principal + interestOn(request.principal, request.interestBps);
 
   return (
@@ -511,6 +530,8 @@ export function RequestCard({
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
             {busy ? "Cancelling…" : "Cancel"}
           </Button>
+        ) : !me ? (
+          <Button onClick={openConnectModal}>Connect wallet</Button>
         ) : (
           <Button onClick={onFund} disabled={busy}>
             {busy ? "Funding…" : "Fund this"}
@@ -550,6 +571,8 @@ export function OfferCard({
   onTake: (tokenIds: number[]) => void;
   onCancel: () => void;
 }) {
+  const me = useMyAddress();
+  const { openConnectModal } = useConnectModal();
   const [picking, setPicking] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
 
@@ -580,6 +603,8 @@ export function OfferCard({
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
             {busy ? "Cancelling…" : "Cancel"}
           </Button>
+        ) : !me ? (
+          <Button onClick={openConnectModal}>Connect wallet</Button>
         ) : !enough ? (
           <Button disabled>Need {offer.tokenCount} Boys</Button>
         ) : picking ? (
