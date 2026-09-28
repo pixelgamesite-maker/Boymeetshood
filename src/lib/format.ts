@@ -110,3 +110,18 @@ export function timeLeft(
 export function shortAddress(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
+
+/** 1758963200 -> "3m ago" / "2h ago" / "just now" */
+export function timeAgo(unixSecs: number, now = Math.floor(Date.now() / 1000)): string {
+  const secs = Math.max(0, now - unixSecs);
+  if (secs < 45) return "just now";
+
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
