@@ -2,6 +2,8 @@ import { useState, type ReactNode } from "react";
 import { formatAmountLabel } from "@/lib/format";
 import { CURRENCY_LABEL, type Currency } from "@/types/lending";
 import { useFloorPrice } from "@/hooks/useFloorPrice";
+import { useActivityFeed } from "@/hooks/useActivityFeed";
+import { timeAgo } from "@/lib/format";
 import { LINKS } from "@/lib/site";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
@@ -81,17 +83,20 @@ export default function Market() {
             ))}
           </div>
 
+          <ActivityFeed />
+
+          {!me && (
+            <p
+              className="m-0 mt-7 text-[13px] leading-relaxed"
+              style={{ color: "var(--fg-faint)" }}
+            >
+              Browsing is open to everyone — connect a wallet when you're
+              ready to post, fund or take something.
+            </p>
+          )}
+
           <div className="mt-10">
-            {!me ? (
-              <EmptyState
-                title="Connect your wallet"
-                body="You'll need a wallet on Robinhood Chain to borrow against your Boys or lend USDG."
-              />
-            ) : side === "borrow" ? (
-              <BorrowView />
-            ) : (
-              <LendView />
-            )}
+            {side === "borrow" ? <BorrowView /> : <LendView />}
           </div>
         </div>
       </main>
@@ -208,37 +213,39 @@ function BorrowView() {
         )}
       </Section>
 
-      <Section title="Your loans">
-        {loans.loading && !loans.data ? (
-          <SkeletonRows count={2} />
-        ) : loans.error ? (
-          <ErrorState message={loans.error} onRetry={loans.refetch} />
-        ) : myBorrows.length === 0 ? (
-          <EmptyState
-            title="Nothing borrowed yet"
-            body="Post a request or take an offer to unlock USDG against your Boys."
-          />
-        ) : (
-          <div className="flex flex-col gap-3">
-            {myBorrows.map((loan) => (
-              <LoanCard
-                key={loan.id}
-                loan={loan}
-                role="borrower"
-                busy={busyId === loan.id}
-                onClaim={() => {}}
-                onRepay={async () => {
-                  setBusyId(loan.id);
-                  const ok = await repay.run(loan.id, loan.currency);
-                  setBusyId(null);
-                  if (ok) refreshAll();
-                }}
-              />
-            ))}
-          </div>
-        )}
-        {repay.error && <ActionError message={repay.error} onDismiss={repay.reset} />}
-      </Section>
+      {me && (
+        <Section title="Your loans">
+          {loans.loading && !loans.data ? (
+            <SkeletonRows count={2} />
+          ) : loans.error ? (
+            <ErrorState message={loans.error} onRetry={loans.refetch} />
+          ) : myBorrows.length === 0 ? (
+            <EmptyState
+              title="Nothing borrowed yet"
+              body="Post a request or take an offer to unlock USDG against your Boys."
+            />
+          ) : (
+            <div className="flex flex-col gap-3">
+              {myBorrows.map((loan) => (
+                <LoanCard
+                  key={loan.id}
+                  loan={loan}
+                  role="borrower"
+                  busy={busyId === loan.id}
+                  onClaim={() => {}}
+                  onRepay={async () => {
+                    setBusyId(loan.id);
+                    const ok = await repay.run(loan.id, loan.currency);
+                    setBusyId(null);
+                    if (ok) refreshAll();
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          {repay.error && <ActionError message={repay.error} onDismiss={repay.reset} />}
+        </Section>
+      )}
     </div>
   );
 }
@@ -348,35 +355,37 @@ function LendView() {
         </Section>
       )}
 
-      <Section title="Loans you funded">
-        {loans.loading && !loans.data ? (
-          <SkeletonRows count={2} />
-        ) : funded.length === 0 ? (
-          <EmptyState
-            title="No active loans"
-            body="Fund a request or wait for someone to take an offer."
-          />
-        ) : (
-          <div className="flex flex-col gap-3">
-            {funded.map((loan) => (
-              <LoanCard
-                key={loan.id}
-                loan={loan}
-                role="lender"
-                busy={busyId === loan.id}
-                onRepay={() => {}}
-                onClaim={async () => {
-                  setBusyId(loan.id);
-                  const ok = await claim.run(loan.id);
-                  setBusyId(null);
-                  if (ok) refreshAll();
-                }}
-              />
-            ))}
-          </div>
-        )}
-        {claim.error && <ActionError message={claim.error} onDismiss={claim.reset} />}
-      </Section>
+      {me && (
+        <Section title="Loans you funded">
+          {loans.loading && !loans.data ? (
+            <SkeletonRows count={2} />
+          ) : funded.length === 0 ? (
+            <EmptyState
+              title="No active loans"
+              body="Fund a request or wait for someone to take an offer."
+            />
+          ) : (
+            <div className="flex flex-col gap-3">
+              {funded.map((loan) => (
+                <LoanCard
+                  key={loan.id}
+                  loan={loan}
+                  role="lender"
+                  busy={busyId === loan.id}
+                  onRepay={() => {}}
+                  onClaim={async () => {
+                    setBusyId(loan.id);
+                    const ok = await claim.run(loan.id);
+                    setBusyId(null);
+                    if (ok) refreshAll();
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          {claim.error && <ActionError message={claim.error} onDismiss={claim.reset} />}
+        </Section>
+      )}
     </div>
   );
 }
@@ -435,6 +444,48 @@ function FloorPriceStrip() {
         </span>
       )}
     </a>
+  );
+}
+
+/**
+ * A public, no-wallet-needed pulse of real activity — recent requests,
+ * offers and funded loans, straight from the contract's own events. Exists
+ * so a first-time visitor sees the platform is actually being used before
+ * they've connected anything.
+ */
+function ActivityFeed() {
+  const feed = useActivityFeed();
+
+  if (feed.loading && feed.items.length === 0) return null;
+  if (feed.items.length === 0) return null;
+
+  return (
+    <div className="mt-7 rounded-[16px] p-4" style={{ background: "var(--ink-2)" }}>
+      <div className="mb-2.5 flex items-center gap-2">
+        <span
+          className="inline-flex h-2 w-2 rounded-full"
+          style={{ background: "var(--lime)" }}
+        />
+        <p className="m-0 text-[12px] font-bold uppercase tracking-wide" style={{ color: "var(--fg-faint)" }}>
+          Live on the platform
+        </p>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {feed.items.slice(0, 6).map((item) => (
+          <div key={item.id} className="flex items-baseline justify-between gap-4">
+            <p className="m-0 text-[13.5px]" style={{ color: "#fff" }}>
+              {item.text}
+            </p>
+            <p
+              className="m-0 shrink-0 text-[11.5px]"
+              style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)" }}
+            >
+              {timeAgo(item.timestamp)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
