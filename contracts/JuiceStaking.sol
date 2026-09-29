@@ -19,12 +19,13 @@ interface IJuiceToken {
  * Two things make this different from a typical "X tokens per day" staking
  * contract:
  *
- *   1. FIXED TOTAL PER TERM, not an open-ended daily rate. Choosing a
- *      30/90/180/365-day lock promises a fixed total reward for that Boy at
- *      that duration (before the rarity boost) — 500 / 1,650 / 3,600 /
- *      10,125 $JUICE. That total vests linearly from the moment you stake
- *      and is fully earned exactly at the unlock time; it never keeps
- *      growing if you leave it staked past maturity unclaimed.
+ *   1. FIXED TOTAL PER TERM, not an open-ended daily rate. Choosing a lock
+ *      length — 7, 14, 30, 60, 90, 180 or 365 days — promises a fixed total
+ *      reward for that Boy at that duration (before the rarity boost): 100 /
+ *      225 / 500 / 1,050 / 1,650 / 3,600 / 10,125 $JUICE. That total vests
+ *      linearly from the moment you stake and is fully earned exactly at the
+ *      unlock time; it never keeps growing if you leave it staked past
+ *      maturity unclaimed.
  *
  *   2. RARITY BOOSTS THE FIXED TOTAL, not a separate ongoing rate. A token's
  *      rarity multiplies the duration's base total directly (Common 1x up
@@ -48,7 +49,10 @@ contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
     /* ─────────────────────────────── Types ─────────────────────────────── */
 
     enum Duration {
+        SEVEN,
+        FOURTEEN,
         THIRTY,
+        SIXTY,
         NINETY,
         ONE_EIGHTY,
         THREE_SIXTY_FIVE
@@ -306,14 +310,20 @@ contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
     }
 
     function _durationSeconds(Duration duration) internal pure returns (uint256) {
+        if (duration == Duration.SEVEN) return 7 days;
+        if (duration == Duration.FOURTEEN) return 14 days;
         if (duration == Duration.THIRTY) return 30 days;
+        if (duration == Duration.SIXTY) return 60 days;
         if (duration == Duration.NINETY) return 90 days;
         if (duration == Duration.ONE_EIGHTY) return 180 days;
         return 365 days;
     }
 
     function _durationBaseReward(Duration duration) internal pure returns (uint256) {
+        if (duration == Duration.SEVEN) return 100e18;
+        if (duration == Duration.FOURTEEN) return 225e18;
         if (duration == Duration.THIRTY) return 500e18;
+        if (duration == Duration.SIXTY) return 1_050e18;
         if (duration == Duration.NINETY) return 1_650e18;
         if (duration == Duration.ONE_EIGHTY) return 3_600e18;
         return 10_125e18;
