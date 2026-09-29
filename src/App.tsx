@@ -2,6 +2,7 @@ import { Router as WouterRouter, Route, Switch, Link } from "wouter";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/home";
 import Market from "@/pages/market";
+import Juice from "@/pages/juice";
 import About from "@/pages/about";
 import ComingSoon from "@/pages/coming-soon";
 
@@ -50,7 +51,7 @@ function App() {
             <Route path="/" component={Home} />
             <Route path="/p2p" component={Market} />
             <Route path="/about" component={About} />
-            <Route path="/juice" component={ComingSoon} />
+            <Route path="/juice" component={Juice} />
             <Route path="/treasury" component={ComingSoon} />
             <Route path="/automint" component={ComingSoon} />
             <Route component={NotFound} />
