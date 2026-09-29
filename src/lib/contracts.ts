@@ -14,6 +14,14 @@ export const CONTRACTS = {
 
   /** BoyMeetsHoodLending v3, deployed in block 68280723. */
   escrow: "0x912de88eAb23c048E43d112396211a007D047d65" as Address,
+
+  /**
+   * ⚠️ PLACEHOLDER — replace both after running
+   * `forge script script/DeployJuice.s.sol:DeployJuice --broadcast`.
+   * The /juice page won't work until these are the real deployed addresses.
+   */
+  juice: "0x0000000000000000000000000000000000000000" as Address,
+  juiceStaking: "0x0000000000000000000000000000000000000000" as Address,
 } as const;
 
 /** Largest bundle the contract accepts. Mirrors MAX_BUNDLE. */
