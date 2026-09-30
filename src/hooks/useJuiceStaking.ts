@@ -9,13 +9,7 @@ import { wagmiConfig } from "@/lib/wagmi";
 import { CONTRACTS } from "@/lib/contracts";
 import { juiceStakingAbi, juiceTokenAbi } from "@/lib/abis/staking";
 import { erc721Abi } from "@/lib/abis/tokens";
-import {
-  DURATION_TO_ENUM,
-  type Address,
-  type Rarity,
-  type Stake,
-  type StakeDuration,
-} from "@/types/staking";
+import { type Address, type Rarity, type Stake } from "@/types/staking";
 import { useMyAddress, useMyBoys } from "@/hooks/useLending";
 
 // Re-exported so a page importing from this hook doesn't also need to know
@@ -86,10 +80,6 @@ const RARITY_TIERS: Rarity[] = [
   "Mythic",
 ];
 
-function durationFromEnum(n: number): StakeDuration {
-  return (["30", "90", "180", "365"] as const)[n] ?? "30";
-}
-
 /** Every $JUICE the connected wallet has claimed out so far. */
 export function useJuiceBalance(): Query<bigint> {
   const me = useMyAddress();
@@ -97,6 +87,14 @@ export function useJuiceBalance(): Query<bigint> {
     async () => readContract(wagmiConfig, { ...juice, functionName: "balanceOf", args: [me as Address] }),
     [me],
     Boolean(me),
+  );
+}
+
+/** The live Common-rarity $JUICE/day rate (owner-adjustable, so read fresh). */
+export function useBaseDailyReward(): Query<bigint> {
+  return useQuery(
+    async () => readContract(wagmiConfig, { ...staking, functionName: "baseDailyReward" }),
+    [],
   );
 }
 
@@ -144,7 +142,7 @@ export function useMyStakes(): Query<Stake[]> {
 
       if (ids.length === 0) return [];
 
-      const [infos, rarities] = await Promise.all([
+      const [infos, rarities, rates] = await Promise.all([
         readContracts(wagmiConfig, {
           allowFailure: false,
           contracts: ids.map((id) => ({
@@ -161,14 +159,20 @@ export function useMyStakes(): Query<Stake[]> {
             args: [id] as const,
           })),
         }),
+        readContracts(wagmiConfig, {
+          allowFailure: true,
+          contracts: ids.map((id) => ({
+            ...staking,
+            functionName: "dailyRewardRate" as const,
+            args: [id] as const,
+          })),
+        }),
       ]);
 
       type StakeTuple = {
         owner: Address;
         stakedAt: number;
-        unlockTime: number;
-        duration: number;
-        totalReward: bigint;
+        lastClaimAt: number;
         claimedReward: bigint;
         isStaked: boolean;
       };
@@ -179,19 +183,19 @@ export function useMyStakes(): Query<Stake[]> {
           const rarityResult = rarities[i];
           const rarityValue =
             rarityResult.status === "success" ? (rarityResult.result as string) : "";
+          const rateResult = rates[i];
 
           return {
             tokenId: Number(id),
             owner: info.owner,
             stakedAt: Number(info.stakedAt),
-            unlockTime: Number(info.unlockTime),
-            duration: durationFromEnum(info.duration),
-            totalReward: info.totalReward,
+            lastClaimAt: Number(info.lastClaimAt),
             claimedReward: info.claimedReward,
             isStaked: info.isStaked,
             rarity: (RARITY_TIERS as string[]).includes(rarityValue)
               ? (rarityValue as Rarity)
               : null,
+            dailyRate: rateResult.status === "success" ? (rateResult.result as bigint) : 0n,
           };
         })
         .filter((s) => s.isStaked)
@@ -234,7 +238,6 @@ function readableError(e: unknown): string {
   if (/NotTokenOwner/.test(raw)) return "You don't own that Boy.";
   if (/NotStaked/.test(raw)) return "That Boy isn't staked.";
   if (/NotStakeOwner/.test(raw)) return "That isn't your stake.";
-  if (/StillLocked/.test(raw)) return "This one's still locked — use emergency unstake to exit early.";
   if (/InsufficientFee/.test(raw)) return "The staking fee wasn't fully covered.";
   if (/NothingToClaim/.test(raw)) return "Nothing to claim yet.";
   if (/BadBundle/.test(raw)) return "Pick between 1 and 50 Boys.";
@@ -296,7 +299,7 @@ async function currentStakeFee(): Promise<bigint> {
 
 export function useStake() {
   const me = useMyAddress();
-  return useAction(async (tokenId: number, duration: StakeDuration) => {
+  return useAction(async (tokenId: number) => {
     if (!me) throw new Error("Connect a wallet first.");
     await ensureBoysApprovedForStaking(me);
     const fee = await currentStakeFee();
@@ -305,7 +308,7 @@ export function useStake() {
       await writeContract(wagmiConfig, {
         ...staking,
         functionName: "stake",
-        args: [BigInt(tokenId), DURATION_TO_ENUM[duration]],
+        args: [BigInt(tokenId)],
         value: fee,
       }),
     );
@@ -314,7 +317,7 @@ export function useStake() {
 
 export function useStakeAll() {
   const me = useMyAddress();
-  return useAction(async (tokenIds: number[], duration: StakeDuration) => {
+  return useAction(async (tokenIds: number[]) => {
     if (!me) throw new Error("Connect a wallet first.");
     await ensureBoysApprovedForStaking(me);
     const fee = (await currentStakeFee()) * BigInt(tokenIds.length);
@@ -323,13 +326,14 @@ export function useStakeAll() {
       await writeContract(wagmiConfig, {
         ...staking,
         functionName: "stakeAll",
-        args: [tokenIds.map(BigInt), DURATION_TO_ENUM[duration]],
+        args: [tokenIds.map(BigInt)],
         value: fee,
       }),
     );
   });
 }
 
+/** Unstake anytime — there's no lock. Pays out whatever's accrued so far. */
 export function useUnstake() {
   return useAction(async (tokenId: number) =>
     send(
@@ -340,24 +344,6 @@ export function useUnstake() {
       }),
     ),
   );
-}
-
-export function useEmergencyUnstake() {
-  return useAction(async (tokenId: number) => {
-    const fee = await readContract(wagmiConfig, {
-      ...staking,
-      functionName: "emergencyUnstakeFee",
-    });
-
-    return send(
-      await writeContract(wagmiConfig, {
-        ...staking,
-        functionName: "emergencyUnstake",
-        args: [BigInt(tokenId)],
-        value: fee,
-      }),
-    );
-  });
 }
 
 export function useClaimRewards() {

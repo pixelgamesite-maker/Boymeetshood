@@ -106,6 +106,29 @@ export function timeLeft(
   return { secs, expired: false, label, urgent: secs < 86_400 };
 }
 
+/** 1500000000000000000000n -> "1,500" $JUICE (18 decimals, whole-number display). */
+export function formatJuice(base: bigint): string {
+  const unit = 10n ** 18n;
+  const whole = base / unit;
+  const fraction = base % unit;
+
+  // Round to the nearest whole token for display — $JUICE amounts here are
+  // always in the thousands, so a fraction is never the meaningful digit.
+  const rounded = fraction * 2n >= unit ? whole + 1n : whole;
+  return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/**
+ * 1500000000000000000000n -> 1500 (18 decimals, as a plain JS number).
+ * For client-side estimate math only (e.g. multiplying by a rarity
+ * booster) — never format this directly, and never use it for anything
+ * that has to match the contract's integer math exactly. formatJuice
+ * (above) is a comma-formatted STRING, not safe to pass to Number().
+ */
+export function juiceToNumber(base: bigint): number {
+  return Number(base) / 1e18;
+}
+
 /** 0x1234…abcd */
 export function shortAddress(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
