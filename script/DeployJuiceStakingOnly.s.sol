@@ -65,10 +65,13 @@ contract DeployJuiceStakingOnly is Script {
      */
     uint256 constant BASE_DAILY_REWARD = 833.5e18;
 
-    function run() external returns (JuiceStaking staking) {
+    // No return value: forge 1.8.x rejects a script `run()` that returns
+    // something ("encode length mismatch: expected 0 types, got 1"). The
+    // deployed address is logged below, which is all we need.
+    function run() external {
         vm.startBroadcast();
 
-        staking = new JuiceStaking(OWNER, BOYS_NFT, JUICE, TREASURY, BASE_DAILY_REWARD);
+        JuiceStaking staking = new JuiceStaking(OWNER, BOYS_NFT, JUICE, TREASURY, BASE_DAILY_REWARD);
 
         vm.stopBroadcast();
 
