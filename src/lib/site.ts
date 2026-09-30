@@ -57,6 +57,14 @@ export const TOOLS: Tool[] = [
     live: true,
   },
   {
+    name: "JUICE",
+    blurb: "The Hood needs a scoreboard. Earn it by actually using the protocol.",
+    href: "/juice",
+    image: ART.snowboard,
+    tint: "var(--violet)",
+    live: true,
+  },
+  {
     name: "Hood AutoMint",
     blurb: "Non-custodial minting terminal. Free for all holders. Less clicking, less panic.",
     href: "/automint",
@@ -71,14 +79,6 @@ export const TOOLS: Tool[] = [
     image: ART.basketball,
     tint: "var(--punch)",
     live: false,
-  },
-  {
-    name: "JUICE",
-    blurb: "The Hood needs a scoreboard. Earn it by actually using the protocol.",
-    href: "/juice",
-    image: ART.snowboard,
-    tint: "var(--violet)",
-    live: true,
   },
 ];
 
