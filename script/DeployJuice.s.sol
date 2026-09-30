@@ -46,11 +46,18 @@ contract DeployJuice is Script {
      */
     address constant OWNER = 0x05a04a21A20905cF37AE46fBc2a83A3774dbffD2;
 
+    /**
+     * $JUICE earned per day at Common (1x) rarity, 18 decimals. Plain
+     * storage on the deployed contract, not hardcoded — retune anytime with
+     * staking.setBaseDailyReward(...), no redeploy needed.
+     */
+    uint256 constant BASE_DAILY_REWARD = 833.5e18;
+
     function run() external returns (JuiceToken juice, JuiceStaking staking) {
         vm.startBroadcast();
 
         juice = new JuiceToken(OWNER);
-        staking = new JuiceStaking(OWNER, BOYS_NFT, address(juice), TREASURY);
+        staking = new JuiceStaking(OWNER, BOYS_NFT, address(juice), TREASURY, BASE_DAILY_REWARD);
 
         vm.stopBroadcast();
 
