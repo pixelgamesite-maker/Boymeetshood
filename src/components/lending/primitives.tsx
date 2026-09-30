@@ -194,9 +194,10 @@ const GATEWAYS = [
 ];
 
 /**
- * Every Boy mirrored on Supabase. Tried last, but it's the only source with
- * predictable latency — public IPFS gateways are slow or rate-limited often
- * enough that art loading at all shouldn't depend on them.
+ * Every Boy mirrored on Supabase. Tried FIRST — it's the only source with
+ * predictable latency; public IPFS gateways (below) are the fallback, since
+ * they're slow or rate-limited often enough that art loading at all
+ * shouldn't depend on them.
  */
 const MIRROR = (tokenId: number) =>
   `https://vcxixncpxesnxbevxmyw.supabase.co/storage/v1/object/public/boy/nft_${tokenId}.png`;
@@ -270,7 +271,10 @@ export function loadBoyMeta(tokenId: number): Promise<BoyMeta> {
       const image = (json.image ?? json.image_url) as string | undefined;
       const meta: BoyMeta = {
         name: typeof json.name === "string" ? json.name : fallback.name,
-        images: [...(image ? candidates(image) : []), MIRROR(tokenId)],
+        // Supabase mirror first (fast, predictable), IPFS gateways as
+        // fallback — public gateways are slow/rate-limited often enough that
+        // art loading at all shouldn't depend on them.
+        images: [MIRROR(tokenId), ...(image ? candidates(image) : [])],
       };
       metaCache.set(tokenId, meta);
       return meta;

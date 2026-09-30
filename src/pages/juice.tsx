@@ -61,11 +61,9 @@ export default function Juice() {
             className="m-0 mt-4 max-w-[62ch] text-[15.5px] leading-relaxed"
             style={{ color: "var(--fg-dim)" }}
           >
-            $JUICE doesn't have real value yet — it's a gamified score for the
-            Hood ecosystem today, built to convert into the main token at a
-            fixed ratio once that token launches. Stake a Boy and it earns
-            $JUICE continuously, boosted by rarity, for as long as it stays
-            staked. No lock: unstake anytime and keep whatever's accrued.
+            Stake a Boy and it earns $JUICE continuously, boosted by rarity,
+            for as long as it stays staked. No lock: unstake anytime and keep
+            whatever's accrued.
           </p>
 
           {!me && (
@@ -127,13 +125,6 @@ function RewardTable() {
           ))}
       </div>
 
-      <p className="m-0 mt-5 text-[12px] leading-relaxed" style={{ color: "var(--fg-faint)" }}>
-        No lock — a staked Boy earns for every second it's staked, and you can
-        claim or unstake whenever you like. The rate above can change over
-        time as the reward schedule is tuned; a rate change applies to
-        whatever's unclaimed at the time, so claim often if you want to lock
-        in the rate you're seeing now.
-      </p>
     </Panel>
   );
 }
@@ -178,7 +169,7 @@ function StakeSection() {
   }
 
   return (
-    <Section title="Stake" note="Pick your Boys — no lock length to choose.">
+    <Section title="Stake" note="Put your Boys to work">
       {!me ? (
         <EmptyState
           title="Connect your wallet"
@@ -196,7 +187,10 @@ function StakeSection() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <div
+            className="grid gap-3"
+            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
+          >
             {(boys.data ?? []).map((boy) => (
               <div key={boy.tokenId} className="relative">
                 <BoyCard
