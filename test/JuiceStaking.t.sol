@@ -39,7 +39,10 @@ contract JuiceStakingTest is Test {
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
 
+    JuiceStaking.Duration internal constant D7 = JuiceStaking.Duration.SEVEN;
+    JuiceStaking.Duration internal constant D14 = JuiceStaking.Duration.FOURTEEN;
     JuiceStaking.Duration internal constant D30 = JuiceStaking.Duration.THIRTY;
+    JuiceStaking.Duration internal constant D60 = JuiceStaking.Duration.SIXTY;
     JuiceStaking.Duration internal constant D90 = JuiceStaking.Duration.NINETY;
     JuiceStaking.Duration internal constant D180 = JuiceStaking.Duration.ONE_EIGHTY;
     JuiceStaking.Duration internal constant D365 = JuiceStaking.Duration.THREE_SIXTY_FIVE;
@@ -84,6 +87,29 @@ contract JuiceStakingTest is Test {
     // you pick, and however many times you claim along the way, the total
     // minted across the full term is exactly the promised amount.
 
+    function test_ExactPayout_Common7Days() public {
+        _setRarity(1, "Common");
+        _stake(alice, 1, D7);
+
+        vm.warp(block.timestamp + 7 days);
+        vm.prank(alice);
+        staking.claimRewards(1);
+
+        assertEq(juice.balanceOf(alice), 100e18);
+    }
+
+    function test_ExactPayout_Rare14Days() public {
+        _setRarity(1, "Rare");
+        _stake(alice, 1, D14);
+
+        vm.warp(block.timestamp + 14 days);
+        vm.prank(alice);
+        staking.claimRewards(1);
+
+        // 225 * 1.35 = 303.75
+        assertEq(juice.balanceOf(alice), 303.75e18);
+    }
+
     function test_ExactPayout_Common30Days() public {
         _setRarity(1, "Common");
         _stake(alice, 1, D30);
@@ -93,6 +119,18 @@ contract JuiceStakingTest is Test {
         staking.claimRewards(1);
 
         assertEq(juice.balanceOf(alice), 500e18);
+    }
+
+    function test_ExactPayout_Epic60Days() public {
+        _setRarity(1, "Epic");
+        _stake(alice, 1, D60);
+
+        vm.warp(block.timestamp + 60 days);
+        vm.prank(alice);
+        staking.claimRewards(1);
+
+        // 1050 * 1.6 = 1680
+        assertEq(juice.balanceOf(alice), 1680e18);
     }
 
     function test_ExactPayout_Uncommon90Days() public {
