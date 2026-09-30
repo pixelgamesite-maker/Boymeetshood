@@ -259,13 +259,24 @@ export function useMyBoys(): Query<OwnedBoy[]> {
       const client = getPublicClient(wagmiConfig);
       if (!client || !me) return [];
 
-      const logs = await client.getLogs({
-        address: CONTRACTS.boys,
-        event: TRANSFER_EVENT,
-        args: { to: me },
-        fromBlock: DEPLOY_BLOCK,
-        toBlock: "latest",
-      });
+      // The Robinhood RPC caps eth_getLogs at 10M blocks per request, and the
+      // chain has grown past that from DEPLOY_BLOCK — so scan in ≤10M-block
+      // windows (9M for margin) and aggregate. Grows to more windows over
+      // time; each is a cheap indexed Transfer-by-`to` query.
+      const MAX_RANGE = 9_000_000n;
+      const latest = await client.getBlockNumber();
+      const logs: Awaited<ReturnType<typeof client.getLogs>> = [];
+      for (let start = DEPLOY_BLOCK; start <= latest; start += MAX_RANGE + 1n) {
+        const end = start + MAX_RANGE > latest ? latest : start + MAX_RANGE;
+        const chunk = await client.getLogs({
+          address: CONTRACTS.boys,
+          event: TRANSFER_EVENT,
+          args: { to: me },
+          fromBlock: start,
+          toBlock: end,
+        });
+        logs.push(...chunk);
+      }
 
       const candidates = [
         ...new Set(

@@ -78,7 +78,7 @@ export const TOOLS: Tool[] = [
     href: "/juice",
     image: ART.snowboard,
     tint: "var(--violet)",
-    live: false,
+    live: true,
   },
 ];
 
