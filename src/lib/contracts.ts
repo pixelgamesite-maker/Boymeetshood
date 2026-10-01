@@ -15,13 +15,10 @@ export const CONTRACTS = {
   /** BoyMeetsHoodLending v3, deployed in block 68280723. */
   escrow: "0x912de88eAb23c048E43d112396211a007D047d65" as Address,
 
-  /**
-   * ⚠️ PLACEHOLDER — replace both after running
-   * `forge script script/DeployJuice.s.sol:DeployJuice --broadcast`.
-   * The /juice page won't work until these are the real deployed addresses.
-   */
+  /** $JUICE ERC-20 (editable-durations staking). */
   juice: "0x02C0B72779234E7a8666190917D3327f1554dED6" as Address,
-  juiceStaking: "0xf892e78862f8e5D3491e228750E49419965D9F81" as Address,
+  /** JuiceStaking with editable lock tiers (30/90/180/365d seeded). */
+  juiceStaking: "0xF5039f5C62B9434dFE5FeE4FACb2bf4b59b6b567" as Address,
 } as const;
 
 /** Largest bundle the contract accepts. Mirrors MAX_BUNDLE. */
