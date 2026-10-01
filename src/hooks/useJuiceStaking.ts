@@ -10,12 +10,10 @@ import { CONTRACTS } from "@/lib/contracts";
 import { juiceStakingAbi, juiceTokenAbi } from "@/lib/abis/staking";
 import { erc721Abi } from "@/lib/abis/tokens";
 import {
-  DURATION_TO_ENUM,
-  durationFromEnum,
   type Address,
+  type DurationTier,
   type Rarity,
   type Stake,
-  type StakeDuration,
 } from "@/types/staking";
 import { useMyAddress, useMyBoys } from "@/hooks/useLending";
 
@@ -105,6 +103,34 @@ export function useBaseDailyReward(): Query<bigint> {
   );
 }
 
+/** The lock tiers the contract currently offers, read live (editable on-chain). */
+export function useDurations(): Query<DurationTier[]> {
+  return useQuery(async () => {
+    const days = (await readContract(wagmiConfig, {
+      ...staking,
+      functionName: "getDurations",
+    })) as readonly bigint[];
+    if (days.length === 0) return [];
+
+    const bpsList = await readContracts(wagmiConfig, {
+      allowFailure: true,
+      contracts: days.map((d) => ({
+        ...staking,
+        functionName: "durationMultiplierBps" as const,
+        args: [d] as const,
+      })),
+    });
+
+    return days
+      .map((d, i) => ({
+        days: Number(d),
+        bps: bpsList[i].status === "success" ? Number(bpsList[i].result as bigint) : 0,
+      }))
+      .filter((t) => t.bps > 0)
+      .sort((a, b) => a.days - b.days);
+  }, []);
+}
+
 /** Rarity tier for a set of tokens, read fresh (used by the stake picker). */
 export function useTokenRarities(tokenIds: number[]): Query<Record<number, Rarity | null>> {
   return useQuery(
@@ -173,7 +199,7 @@ export function useMyStakes(): Query<Stake[]> {
         stakedAt: number;
         unlockTime: number;
         lastClaimAt: number;
-        duration: number;
+        durationDays: number;
         rewardRate: bigint;
         claimedReward: bigint;
         isStaked: boolean;
@@ -192,7 +218,7 @@ export function useMyStakes(): Query<Stake[]> {
             stakedAt: Number(info.stakedAt),
             unlockTime: Number(info.unlockTime),
             lastClaimAt: Number(info.lastClaimAt),
-            duration: durationFromEnum(Number(info.duration)),
+            durationDays: Number(info.durationDays),
             dailyRate: info.rewardRate,
             claimedReward: info.claimedReward,
             isStaked: info.isStaked,
@@ -242,6 +268,7 @@ function readableError(e: unknown): string {
   if (/NotStaked/.test(raw)) return "That Boy isn't staked.";
   if (/NotStakeOwner/.test(raw)) return "That isn't your stake.";
   if (/StillLocked/.test(raw)) return "This Boy is still locked — wait until the term ends to unstake.";
+  if (/BadDuration/.test(raw)) return "That lock length isn't available — pick one of the offered terms.";
   if (/InsufficientFee/.test(raw)) return "The staking fee wasn't fully covered.";
   if (/NothingToClaim/.test(raw)) return "Nothing to claim yet.";
   if (/BadBundle/.test(raw)) return "Pick between 1 and 50 Boys.";
@@ -303,7 +330,7 @@ async function currentStakeFee(): Promise<bigint> {
 
 export function useStake() {
   const me = useMyAddress();
-  return useAction(async (tokenId: number, duration: StakeDuration) => {
+  return useAction(async (tokenId: number, durationDays: number) => {
     if (!me) throw new Error("Connect a wallet first.");
     await ensureBoysApprovedForStaking(me);
     const fee = await currentStakeFee();
@@ -312,7 +339,7 @@ export function useStake() {
       await writeContract(wagmiConfig, {
         ...staking,
         functionName: "stake",
-        args: [BigInt(tokenId), DURATION_TO_ENUM[duration]],
+        args: [BigInt(tokenId), BigInt(durationDays)],
         value: fee,
       }),
     );
@@ -321,7 +348,7 @@ export function useStake() {
 
 export function useStakeAll() {
   const me = useMyAddress();
-  return useAction(async (tokenIds: number[], duration: StakeDuration) => {
+  return useAction(async (tokenIds: number[], durationDays: number) => {
     if (!me) throw new Error("Connect a wallet first.");
     await ensureBoysApprovedForStaking(me);
     const fee = (await currentStakeFee()) * BigInt(tokenIds.length);
@@ -330,7 +357,7 @@ export function useStakeAll() {
       await writeContract(wagmiConfig, {
         ...staking,
         functionName: "stakeAll",
-        args: [tokenIds.map(BigInt), DURATION_TO_ENUM[duration]],
+        args: [tokenIds.map(BigInt), BigInt(durationDays)],
         value: fee,
       }),
     );

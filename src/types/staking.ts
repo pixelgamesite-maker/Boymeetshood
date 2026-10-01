@@ -2,10 +2,11 @@
  * Shapes returned by JuiceStaking. Reward amounts are $JUICE base units
  * (18 decimals) — always format with formatJuice, not a raw bigint.
  *
- * A Boy is locked for a fixed term — 3, 6 or 12 months — chosen at stake
- * time. It earns continuously at a rate snapshotted when staked
- * (baseDailyReward x rarity x duration), and can't be withdrawn until the
- * term ends; rewards can be claimed anytime during the term.
+ * A Boy is locked for a fixed term, chosen at stake time from the tiers the
+ * contract currently offers (read live via getDurations). It earns
+ * continuously at a rate snapshotted when staked
+ * (baseDailyReward x rarity x duration), can't be withdrawn until the term
+ * ends, and rewards can be claimed anytime during the term.
  */
 
 export type Address = `0x${string}`;
@@ -32,41 +33,33 @@ export const RARITY_ORDER: Rarity[] = [
 ];
 
 /**
- * Lock durations, keyed by month count. The string values map to the
- * contract's Duration enum by index via DURATION_TO_ENUM — order matters.
+ * A lock tier, read live from the contract: a length in days and its reward
+ * multiplier in basis points (10000 = 1x). Tiers are editable on-chain, so
+ * the UI never hardcodes them.
  */
-export type StakeDuration = "3" | "6" | "12";
+export interface DurationTier {
+  days: number;
+  bps: number;
+}
 
-export const DURATIONS: StakeDuration[] = ["3", "6", "12"];
+/** bps (10000 = 1x) -> plain multiplier, e.g. 15000 -> 1.5. */
+export function boosterFromBps(bps: number): number {
+  return bps / 10_000;
+}
 
-/** Matches the contract's Duration enum: THREE_MONTHS=0, SIX=1, ONE_YEAR=2. */
-export const DURATION_TO_ENUM: Record<StakeDuration, number> = {
-  "3": 0,
-  "6": 1,
-  "12": 2,
-};
-
-export const DURATION_LABEL: Record<StakeDuration, string> = {
-  "3": "3 months",
-  "6": "6 months",
-  "12": "12 months",
-};
-
-export const DURATION_SECONDS: Record<StakeDuration, number> = {
-  "3": 90 * 86_400,
-  "6": 180 * 86_400,
-  "12": 365 * 86_400,
-};
-
-/** Lock-length booster, matching the contract's durationMultiplierBps. */
-export const DURATION_BOOSTER: Record<StakeDuration, number> = {
-  "3": 1,
-  "6": 1.5,
-  "12": 2.5,
-};
-
-export function durationFromEnum(n: number): StakeDuration {
-  return DURATIONS[n] ?? DURATIONS[0];
+/** Friendly label for a day-count. Falls back to "<n> days". */
+export function durationLabel(days: number): string {
+  const map: Record<number, string> = {
+    7: "1 week",
+    14: "2 weeks",
+    30: "1 month",
+    60: "2 months",
+    90: "3 months",
+    180: "6 months",
+    270: "9 months",
+    365: "12 months",
+  };
+  return map[days] ?? `${days} days`;
 }
 
 export interface Stake {
@@ -77,7 +70,8 @@ export interface Stake {
   unlockTime: number;
   /** Rewards are accrued from this timestamp forward (see calculateRewards). */
   lastClaimAt: number;
-  duration: StakeDuration;
+  /** Lock length in days, as chosen at stake time. */
+  durationDays: number;
   /** Snapshotted $JUICE/day for this stake (base x rarity x duration). */
   dailyRate: bigint;
   /** Lifetime total already minted out via claimRewards / unstake. */

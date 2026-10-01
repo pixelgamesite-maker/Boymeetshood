@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
@@ -15,17 +15,16 @@ import {
 } from "@/components/lending/primitives";
 import { formatJuice, juiceToNumber } from "@/lib/format";
 import {
-  DURATION_BOOSTER,
-  DURATION_LABEL,
-  DURATIONS,
+  boosterFromBps,
+  durationLabel,
   RARITY_BOOSTER,
   RARITY_ORDER,
   type Rarity,
   type Stake,
-  type StakeDuration,
 } from "@/types/staking";
 import {
   useBaseDailyReward,
+  useDurations,
   useClaimAllRewards,
   useClaimRewards,
   useJuiceBalance,
@@ -102,6 +101,7 @@ export default function Juice() {
 
 function RewardTable() {
   const base = useBaseDailyReward();
+  const durations = useDurations();
 
   return (
     <Panel className="mt-8">
@@ -138,14 +138,14 @@ function RewardTable() {
         Lock longer, earn more
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
-        {DURATIONS.map((d) => (
+        {(durations.data ?? []).map((t) => (
           <span
-            key={d}
+            key={t.days}
             className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-bold"
             style={{ background: "rgba(255,255,255,0.07)", color: "#fff" }}
           >
-            {DURATION_LABEL[d]}
-            <span style={{ color: "var(--lime)", fontFamily: "var(--mono)" }}>{DURATION_BOOSTER[d]}×</span>
+            {durationLabel(t.days)}
+            <span style={{ color: "var(--lime)", fontFamily: "var(--mono)" }}>{boosterFromBps(t.bps)}×</span>
           </span>
         ))}
       </div>
@@ -166,8 +166,17 @@ function StakeSection() {
   const tokenIds = useMemo(() => (boys.data ?? []).map((b) => b.tokenId), [boys.data]);
   const rarities = useTokenRarities(tokenIds);
   const base = useBaseDailyReward();
+  const durations = useDurations();
   const [selected, setSelected] = useState<number[]>([]);
-  const [duration, setDuration] = useState<StakeDuration>("3");
+  const [durationDays, setDurationDays] = useState<number>(90);
+
+  // Default to the first available tier once they load (if 90 isn't offered).
+  useEffect(() => {
+    const tiers = durations.data;
+    if (tiers && tiers.length > 0 && !tiers.some((t) => t.days === durationDays)) {
+      setDurationDays(tiers[0].days);
+    }
+  }, [durations.data, durationDays]);
 
   const stake = useStake();
   const stakeAll = useStakeAll();
@@ -177,24 +186,26 @@ function StakeSection() {
     setSelected((s: number[]) => (s.includes(tokenId) ? s.filter((t) => t !== tokenId) : [...s, tokenId]));
   }
 
+  const selectedTier = (durations.data ?? []).find((t) => t.days === durationDays);
+
   const estimatePerDay = useMemo(() => {
-    if (base.data === undefined) return undefined;
+    if (base.data === undefined || !selectedTier) return undefined;
     const rarityData = rarities.data ?? {};
     const baseRate = juiceToNumber(base.data);
-    const durBooster = DURATION_BOOSTER[duration];
+    const durBooster = boosterFromBps(selectedTier.bps);
     return selected.reduce((sum: number, id: number) => {
       const rarity = rarityData[id];
       const booster = rarity ? RARITY_BOOSTER[rarity] : 1;
       return sum + baseRate * booster * durBooster;
     }, 0);
-  }, [selected, duration, base.data, rarities.data]);
+  }, [selected, selectedTier, base.data, rarities.data]);
 
   async function onStake() {
     if (selected.length === 0) return;
     const ok =
       selected.length === 1
-        ? await stake.run(selected[0], duration)
-        : await stakeAll.run(selected, duration);
+        ? await stake.run(selected[0], durationDays)
+        : await stakeAll.run(selected, durationDays);
     if (ok) {
       setSelected([]);
       boys.refetch();
@@ -226,13 +237,13 @@ function StakeSection() {
               Lock length
             </p>
             <div className="flex flex-wrap gap-2">
-              {DURATIONS.map((d) => {
-                const on = duration === d;
+              {(durations.data ?? []).map((t) => {
+                const on = durationDays === t.days;
                 return (
                   <button
-                    key={d}
+                    key={t.days}
                     type="button"
-                    onClick={() => setDuration(d)}
+                    onClick={() => setDurationDays(t.days)}
                     className="rounded-[14px] px-4 py-2.5 text-left transition-colors"
                     style={{
                       background: on ? "var(--lime)" : "var(--ink-3)",
@@ -241,12 +252,12 @@ function StakeSection() {
                       cursor: "pointer",
                     }}
                   >
-                    <span className="block text-[14px] font-extrabold">{DURATION_LABEL[d]}</span>
+                    <span className="block text-[14px] font-extrabold">{durationLabel(t.days)}</span>
                     <span
                       className="block text-[11px] font-bold"
                       style={{ fontFamily: "var(--mono)", color: on ? "var(--ink)" : "var(--lime)" }}
                     >
-                      {DURATION_BOOSTER[d]}× rewards
+                      {boosterFromBps(t.bps)}× rewards
                     </span>
                   </button>
                 );
@@ -277,7 +288,7 @@ function StakeSection() {
             <div>
               <p className="m-0 text-[12px]" style={{ color: "var(--fg-faint)" }}>
                 Estimated rate for {selected.length || 0} Boy
-                {selected.length === 1 ? "" : "s"} · {DURATION_LABEL[duration]} lock
+                {selected.length === 1 ? "" : "s"} · {durationLabel(durationDays)} lock
               </p>
               <p
                 className="m-0 mt-1 text-[20px] font-extrabold"
@@ -294,7 +305,7 @@ function StakeSection() {
                 ? "Staking…"
                 : selected.length === 0
                   ? "Pick Boys to stake"
-                  : `Stake ${selected.length} Boy${selected.length === 1 ? "" : "s"} · ${DURATION_LABEL[duration]}`}
+                  : `Stake ${selected.length} Boy${selected.length === 1 ? "" : "s"} · ${durationLabel(durationDays)}`}
             </Button>
           </div>
 
@@ -450,7 +461,7 @@ function StakeCard({ stake, onChanged }: { stake: Stake; onChanged: () => void }
             <p className="m-0 text-[14px] font-extrabold">BoyMeetsH00d #{stake.tokenId}</p>
             <div className="mt-1 flex items-center gap-2">
               {stake.rarity && <Pill tone="sky">{stake.rarity}</Pill>}
-              <Pill tone="neutral">{DURATION_LABEL[stake.duration]}</Pill>
+              <Pill tone="neutral">{durationLabel(stake.durationDays)}</Pill>
               <Pill tone={unlocked ? "lime" : "neutral"}>{lockLabel}</Pill>
             </div>
           </div>

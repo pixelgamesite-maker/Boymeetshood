@@ -24,7 +24,7 @@ export const juiceStakingAbi = [
           { name: "stakedAt", type: "uint40" },
           { name: "unlockTime", type: "uint40" },
           { name: "lastClaimAt", type: "uint40" },
-          { name: "duration", type: "uint8" },
+          { name: "durationDays", type: "uint32" },
           { name: "rewardRate", type: "uint256" },
           { name: "claimedReward", type: "uint256" },
           { name: "isStaked", type: "bool" },
@@ -45,8 +45,22 @@ export const juiceStakingAbi = [
     stateMutability: "view",
     inputs: [
       { name: "tokenId", type: "uint256" },
-      { name: "duration", type: "uint8" },
+      { name: "durationDays", type: "uint256" },
     ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "getDurations",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256[]" }],
+  },
+  {
+    type: "function",
+    name: "durationMultiplierBps",
+    stateMutability: "view",
+    inputs: [{ name: "durationDays", type: "uint256" }],
     outputs: [{ type: "uint256" }],
   },
   {
@@ -92,7 +106,7 @@ export const juiceStakingAbi = [
     stateMutability: "payable",
     inputs: [
       { name: "tokenId", type: "uint256" },
-      { name: "duration", type: "uint8" },
+      { name: "durationDays", type: "uint256" },
     ],
     outputs: [],
   },
@@ -102,7 +116,7 @@ export const juiceStakingAbi = [
     stateMutability: "payable",
     inputs: [
       { name: "tokenIds", type: "uint256[]" },
-      { name: "duration", type: "uint8" },
+      { name: "durationDays", type: "uint256" },
     ],
     outputs: [],
   },
