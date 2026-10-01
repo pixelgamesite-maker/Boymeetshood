@@ -21,7 +21,7 @@ export const CONTRACTS = {
    * The /juice page won't work until these are the real deployed addresses.
    */
   juice: "0x02C0B72779234E7a8666190917D3327f1554dED6" as Address,
-  juiceStaking: "0xa4EDfcf4f4D32952B7Ac90315972F1c31882f29F" as Address,
+  juiceStaking: "0xf892e78862f8e5D3491e228750E49419965D9F81" as Address,
 } as const;
 
 /** Largest bundle the contract accepts. Mirrors MAX_BUNDLE. */
