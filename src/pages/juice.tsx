@@ -4,6 +4,7 @@ import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import {
   BoyCard,
+  BoyImage,
   Button,
   EmptyState,
   ErrorState,
@@ -22,7 +23,6 @@ import {
   useMyAddress,
   useMyBoys,
   useMyStakes,
-  usePendingRewards,
   useStake,
   useStakeAll,
   useTokenRarities,
@@ -270,14 +270,27 @@ function MyStakesSection() {
   const list = stakes.data ?? [];
 
   return (
-    <Section
-      title="Your stakes"
-      note={
-        balance.data !== undefined
-          ? `$JUICE claimed so far: ${formatJuice(balance.data)}`
-          : undefined
-      }
-    >
+    <Section title="Your stakes">
+      <Panel className="mb-6 flex items-center gap-4">
+        <span style={{ fontSize: 36, lineHeight: 1 }} aria-hidden="true">
+          🧃
+        </span>
+        <div>
+          <p className="m-0 text-[12px] font-bold uppercase tracking-wide" style={{ color: "var(--fg-faint)" }}>
+            Your $JUICE balance
+          </p>
+          <p
+            className="m-0 mt-0.5 text-[28px] font-black leading-none"
+            style={{ fontFamily: "var(--mono)", color: "var(--lime)" }}
+          >
+            {balance.data !== undefined ? formatJuice(balance.data) : "…"}
+            <span className="ml-1.5 text-[14px] font-extrabold" style={{ color: "var(--fg-dim)" }}>
+              $JUICE
+            </span>
+          </p>
+        </div>
+      </Panel>
+
       {list.length > 1 && (
         <div className="mb-4">
           <Button
@@ -326,10 +339,18 @@ function StakeCard({ stake, onChanged }: { stake: Stake; onChanged: () => void }
   const now = useNow(1000);
   const unstake = useUnstake();
   const claim = useClaimRewards();
-  const pendingRewards = usePendingRewards(stake.tokenId, true);
 
   const staked = Math.max(0, now - stake.stakedAt);
   const stakedLabel = `${Math.floor(staked / 86_400)}d ${Math.floor((staked % 86_400) / 3_600)}h staked`;
+
+  // Live mirror of the contract's calculateRewards:
+  //   dailyRate * (now - lastClaimAt) / 1 day
+  // Recomputed every second (useNow ticks at 1000ms), so the figure counts
+  // up in real time between claims — same formula the chain uses, so a claim
+  // mints essentially what's shown here.
+  const elapsed = Math.max(0, now - stake.lastClaimAt);
+  const pending = (stake.dailyRate * BigInt(elapsed)) / 86_400n;
+  const hasPending = pending > 0n;
 
   const busy = unstake.pending || claim.pending;
 
@@ -337,6 +358,21 @@ function StakeCard({ stake, onChanged }: { stake: Stake; onChanged: () => void }
     <Panel>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
+          <div className="relative flex-shrink-0">
+            <BoyImage
+              tokenId={stake.tokenId}
+              className="rounded-[14px]"
+              style={{ width: 72, height: 72 }}
+            />
+            {stake.rarity && (
+              <span
+                className="absolute left-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+                style={{ background: "rgba(0,0,0,0.65)", color: "#fff" }}
+              >
+                {stake.rarity}
+              </span>
+            )}
+          </div>
           <div className="flex flex-col">
             <p className="m-0 text-[14px] font-extrabold">BoyMeetsH00d #{stake.tokenId}</p>
             <div className="mt-1 flex items-center gap-2">
@@ -349,8 +385,11 @@ function StakeCard({ stake, onChanged }: { stake: Stake; onChanged: () => void }
         <div className="flex gap-6">
           <Stat label="Earning" value={`${formatJuice(stake.dailyRate)} $JUICE / day`} />
           <Stat
-            label="Ready to claim"
-            value={pendingRewards.data !== undefined ? `${formatJuice(pendingRewards.data)} $JUICE` : "…"}
+            label="Earning now"
+            value={`${juiceToNumber(pending).toLocaleString(undefined, {
+              minimumFractionDigits: 4,
+              maximumFractionDigits: 4,
+            })} $JUICE`}
             tone="lime"
           />
         </div>
@@ -359,12 +398,9 @@ function StakeCard({ stake, onChanged }: { stake: Stake; onChanged: () => void }
       <div className="mt-4 flex flex-wrap gap-2.5">
         <Button
           variant="ghost"
-          disabled={busy || !pendingRewards.data || pendingRewards.data === 0n}
+          disabled={busy || !hasPending}
           onClick={async () => {
-            if (await claim.run(stake.tokenId)) {
-              pendingRewards.refetch();
-              onChanged();
-            }
+            if (await claim.run(stake.tokenId)) onChanged();
           }}
         >
           {claim.pending ? "Claiming…" : "Claim"}
