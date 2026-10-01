@@ -22,7 +22,10 @@ export const juiceStakingAbi = [
         components: [
           { name: "owner", type: "address" },
           { name: "stakedAt", type: "uint40" },
+          { name: "unlockTime", type: "uint40" },
           { name: "lastClaimAt", type: "uint40" },
+          { name: "duration", type: "uint8" },
+          { name: "rewardRate", type: "uint256" },
           { name: "claimedReward", type: "uint256" },
           { name: "isStaked", type: "bool" },
         ],
@@ -38,9 +41,12 @@ export const juiceStakingAbi = [
   },
   {
     type: "function",
-    name: "dailyRewardRate",
+    name: "quoteDailyRate",
     stateMutability: "view",
-    inputs: [{ name: "tokenId", type: "uint256" }],
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "duration", type: "uint8" },
+    ],
     outputs: [{ type: "uint256" }],
   },
   {
@@ -84,14 +90,20 @@ export const juiceStakingAbi = [
     type: "function",
     name: "stake",
     stateMutability: "payable",
-    inputs: [{ name: "tokenId", type: "uint256" }],
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "duration", type: "uint8" },
+    ],
     outputs: [],
   },
   {
     type: "function",
     name: "stakeAll",
     stateMutability: "payable",
-    inputs: [{ name: "tokenIds", type: "uint256[]" }],
+    inputs: [
+      { name: "tokenIds", type: "uint256[]" },
+      { name: "duration", type: "uint8" },
+    ],
     outputs: [],
   },
   {

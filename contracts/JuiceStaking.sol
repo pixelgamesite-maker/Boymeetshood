@@ -13,46 +13,54 @@ interface IJuiceToken {
 
 /**
  * @title JuiceStaking
- * @notice Stake a Boy and earn $JUICE continuously for as long as it stays
- *         staked, boosted by the Boy's rarity. No lock: unstake anytime.
+ * @notice Lock a Boy for a fixed term — 3, 6 or 12 months — and earn $JUICE
+ *         continuously for it, boosted by both the Boy's rarity and the lock
+ *         length. The Boy cannot be withdrawn until the term ends; rewards can
+ *         be claimed at any time during the term.
  *
- * Rewards accrue every second at `baseDailyReward * rarityMultiplierBps /
- * 10_000 / 1 days`, from the moment a Boy is staked (or last claimed) until
- * it's claimed or unstaked. There's no fixed total and no lock period —
- * leaving a Boy staked longer simply earns more, and claiming early or
- * often doesn't change the rate going forward.
+ * REWARD RATE, snapshotted at stake time:
  *
- * `baseDailyReward` is plain storage, not hardcoded — the owner retunes it
- * with `setBaseDailyReward` (e.g. to track $JUICE's emission budget as the
- * collection or reward schedule changes) without redeploying the contract.
- * Already-CLAIMED rewards are permanent — nothing can change what's already
- * been minted. But a rate or rarity change applies to every stake's whole
- * unclaimed window: pending reward is always `currentRate * (now -
- * lastClaimAt)`, computed fresh at read time, not accrued second-by-second
- * at whatever rate was live at each moment. So a change is effectively
- * retroactive for any time that hasn't been claimed yet — if the owner
- * wants the old rate locked in for time already staked, get holders (or a
- * script) to claim before changing it.
+ *     dailyRate = baseDailyReward
+ *               * rarityMultiplierBps[rarity]      / 10_000
+ *               * durationMultiplierBps[duration]  / 10_000
  *
- * Custody is custodial: a staked Boy sits in this contract until unstaked,
- * mirroring BoyMeetsHoodLending's escrow model and the SHACKO reference
- * this was adapted from.
+ * Longer locks earn more: 3mo = 1x, 6mo = 1.5x, 12mo = 2.5x by default, on
+ * top of the rarity multiplier (Common 1x … Mythic 2.5x). The rate is locked
+ * in when you stake, so a later owner change to baseDailyReward or any
+ * multiplier only affects stakes made after it — a committed stake keeps the
+ * terms it was made under.
+ *
+ * ACCRUAL is continuous but bounded by the term: rewards accrue second by
+ * second from `lastClaimAt`, and stop accruing once the unlock time is
+ * reached. Claiming during the term mints what's accrued so far and doesn't
+ * change the total; leaving a Boy staked past unlock earns nothing extra —
+ * unstake it (or stake it again for a new term).
+ *
+ * Custody is custodial: a staked Boy sits in this contract until the term
+ * ends and it's unstaked. There is no early exit.
  *
  * ⚠️ UNAUDITED. Holds user NFTs.
  */
 contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
     /* ─────────────────────────────── Types ─────────────────────────────── */
 
+    enum Duration {
+        THREE_MONTHS,
+        SIX_MONTHS,
+        ONE_YEAR
+    }
+
     struct StakeInfo {
         address owner;
         uint40 stakedAt;
-        /// @dev Pending reward is always `currentRate * (now - lastClaimAt)`,
-        /// recomputed fresh at the CURRENT rate every time it's read — so a
-        /// baseDailyReward or rarity change applies to this whole unclaimed
-        /// window, not just time going forward. See the contract-level note.
+        uint40 unlockTime;
         uint40 lastClaimAt;
-        /// @dev Lifetime total minted out for this stake. Informational
-        /// only — not used in the reward calculation itself.
+        Duration duration;
+        /// @dev Effective $JUICE/day for this stake (base x rarity x duration),
+        /// snapshotted at stake time so later rate/multiplier changes never
+        /// alter a committed stake.
+        uint256 rewardRate;
+        /// @dev Lifetime total minted out for this stake. Informational.
         uint256 claimedReward;
         bool isStaked;
     }
@@ -70,9 +78,8 @@ contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
     /// @notice Small ETH fee to stake, in wei. Defaults to zero.
     uint256 public stakeFee;
 
-    /// @notice $JUICE earned per day at Common (1x) rarity, 18 decimals.
-    /// Plain storage, not hardcoded — retune with setBaseDailyReward as the
-    /// emission budget or collection size changes; no redeploy needed.
+    /// @notice $JUICE/day at Common rarity, 3-month lock (both multipliers 1x).
+    /// Owner-settable; only affects stakes made after a change.
     uint256 public baseDailyReward;
 
     mapping(uint256 tokenId => StakeInfo) public stakes;
@@ -85,10 +92,20 @@ contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
     /// @notice Rarity tier -> multiplier in basis points (10000 = 1x).
     mapping(string rarity => uint256) public rarityMultiplierBps;
 
+    /// @notice Lock duration -> multiplier in basis points (10000 = 1x).
+    mapping(Duration duration => uint256) public durationMultiplierBps;
+
     /* ─────────────────────────────── Events ─────────────────────────────── */
 
-    event Staked(address indexed user, uint256 indexed tokenId, uint256 fee);
-    event StakedBatch(address indexed user, uint256[] tokenIds, uint256 totalFee);
+    event Staked(
+        address indexed user,
+        uint256 indexed tokenId,
+        Duration duration,
+        uint40 unlockTime,
+        uint256 dailyRate,
+        uint256 fee
+    );
+    event StakedBatch(address indexed user, uint256[] tokenIds, Duration duration, uint256 totalFee);
     event Unstaked(address indexed user, uint256 indexed tokenId, uint256 rewards);
     event RewardsClaimed(address indexed user, uint256 indexed tokenId, uint256 amount);
     event RewardsClaimedBatch(address indexed user, uint256 totalRewards, uint256 tokenCount);
@@ -96,6 +113,7 @@ contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
     event FeesUpdated(uint256 stakeFee);
     event TreasuryUpdated(address treasury);
     event BaseDailyRewardUpdated(uint256 baseDailyReward);
+    event DurationMultiplierUpdated(Duration duration, uint256 bps);
 
     /* ─────────────────────────────── Errors ──────────────────────────────── */
 
@@ -106,6 +124,7 @@ contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
     error AlreadyStaked();
     error NotStaked();
     error NotStakeOwner();
+    error StillLocked();
     error InsufficientFee();
     error NothingToClaim();
     error TransferFailed();
@@ -122,7 +141,7 @@ contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
         treasury = _treasury;
         baseDailyReward = _baseDailyReward;
 
-        // Rarity boosters, applied to baseDailyReward.
+        // Rarity boosters.
         rarityMultiplierBps["Common"] = 10_000; // 1x
         rarityMultiplierBps["Uncommon"] = 11_500; // 1.15x
         rarityMultiplierBps["Rare"] = 13_500; // 1.35x
@@ -130,77 +149,91 @@ contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
         rarityMultiplierBps["Legendary"] = 20_000; // 2x
         rarityMultiplierBps["Mythic"] = 25_000; // 2.5x
 
+        // Lock-length boosters: longer lock earns more.
+        durationMultiplierBps[Duration.THREE_MONTHS] = 10_000; // 1x
+        durationMultiplierBps[Duration.SIX_MONTHS] = 15_000; // 1.5x
+        durationMultiplierBps[Duration.ONE_YEAR] = 25_000; // 2.5x
+
         // Stake fee starts at zero; the owner can turn it on later via setFees.
     }
 
     /* ─────────────────────────────── Staking ──────────────────────────────── */
 
-    function stake(uint256 tokenId) external payable nonReentrant whenNotPaused {
+    function stake(uint256 tokenId, Duration duration) external payable nonReentrant whenNotPaused {
         if (msg.value < stakeFee) revert InsufficientFee();
 
-        _stake(tokenId);
+        _stake(tokenId, duration);
         _forwardFee(msg.value);
-
-        emit Staked(msg.sender, tokenId, msg.value);
     }
 
-    function stakeAll(uint256[] calldata tokenIds) external payable nonReentrant whenNotPaused {
+    function stakeAll(uint256[] calldata tokenIds, Duration duration) external payable nonReentrant whenNotPaused {
         uint256 count = tokenIds.length;
         if (count == 0 || count > MAX_BATCH) revert BadBundle();
         if (msg.value < stakeFee * count) revert InsufficientFee();
 
         for (uint256 i = 0; i < count; i++) {
-            _stake(tokenIds[i]);
+            _stake(tokenIds[i], duration);
         }
         _forwardFee(msg.value);
 
-        emit StakedBatch(msg.sender, tokenIds, msg.value);
+        emit StakedBatch(msg.sender, tokenIds, duration, msg.value);
     }
 
-    function _stake(uint256 tokenId) internal {
+    function _stake(uint256 tokenId, Duration duration) internal {
         // Checked before ownership: once a token is staked it's held by this
         // contract, so `ownerOf` would no longer be msg.sender anyway — this
         // ordering surfaces the more useful "already staked" reason instead
         // of a confusing "not your token".
         if (stakes[tokenId].isStaked) revert AlreadyStaked();
         if (boysNft.ownerOf(tokenId) != msg.sender) revert NotTokenOwner();
-        if (rarityMultiplierBps[tokenRarity[tokenId]] == 0) revert RarityNotSet();
+
+        uint256 rate = _quoteDailyRate(tokenId, duration); // reverts if rarity unset
+        uint256 secs = _durationSeconds(duration);
 
         // safeTransferFrom: the sender is giving an asset TO this contract,
         // so the receiver-hook check is worth having (see onERC721Received).
         boysNft.safeTransferFrom(msg.sender, address(this), tokenId);
 
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint40 nowTs = uint40(block.timestamp);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint40 unlock = uint40(block.timestamp + secs);
+
         stakes[tokenId] = StakeInfo({
             owner: msg.sender,
-            // forge-lint: disable-next-line(unsafe-typecast)
-            stakedAt: uint40(block.timestamp),
-            // forge-lint: disable-next-line(unsafe-typecast)
-            lastClaimAt: uint40(block.timestamp),
+            stakedAt: nowTs,
+            unlockTime: unlock,
+            lastClaimAt: nowTs,
+            duration: duration,
+            rewardRate: rate,
             claimedReward: 0,
             isStaked: true
         });
 
         userStakes[msg.sender].push(tokenId);
+
+        emit Staked(msg.sender, tokenId, duration, unlock, rate, 0);
     }
 
     /* ────────────────────────────── Unstaking ─────────────────────────────── */
 
-    /// @notice Unstake anytime — there's no lock. Pays out whatever's
-    /// accrued so far and returns the Boy.
+    /// @notice Withdraw a Boy after its lock term ends, paying out any
+    /// remaining accrued rewards. Reverts until the unlock time.
     function unstake(uint256 tokenId) external nonReentrant {
         StakeInfo storage info = stakes[tokenId];
         if (!info.isStaked) revert NotStaked();
         if (info.owner != msg.sender) revert NotStakeOwner();
+        if (block.timestamp < info.unlockTime) revert StillLocked();
 
         uint256 rewards = calculateRewards(tokenId);
         info.claimedReward += rewards;
         info.isStaked = false;
         _removeUserStake(msg.sender, tokenId);
 
-        // transferFrom, not safeTransferFrom — the recipient is whoever
-        // staked it, who may be a multisig with no onERC721Received; the
-        // guarantee that a Boy can always be withdrawn matters more than
-        // the receiver check. Same choice BoyMeetsHoodLending makes.
+        // transferFrom, not safeTransferFrom — the recipient is whoever staked
+        // it, who may be a multisig with no onERC721Received; the guarantee
+        // that a Boy can always be withdrawn matters more than the receiver
+        // check. Same choice BoyMeetsHoodLending makes.
         boysNft.transferFrom(address(this), msg.sender, tokenId);
 
         if (rewards > 0) juice.mint(msg.sender, rewards);
@@ -258,22 +291,36 @@ contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
 
     /* ───────────────────────────── Reward math ────────────────────────────── */
 
-    /// @notice Pending, unclaimed rewards for a staked token right now.
+    /// @notice Pending, unclaimed rewards for a staked token right now. Accrual
+    /// is bounded by the unlock time — nothing accrues past the end of the term.
     function calculateRewards(uint256 tokenId) public view returns (uint256) {
         StakeInfo memory info = stakes[tokenId];
         if (!info.isStaked) return 0;
 
-        uint256 elapsed = block.timestamp - info.lastClaimAt;
-        if (elapsed == 0) return 0;
+        uint256 end = block.timestamp < info.unlockTime ? block.timestamp : info.unlockTime;
+        if (end <= info.lastClaimAt) return 0;
 
-        return (dailyRewardRate(tokenId) * elapsed) / 1 days;
+        return (info.rewardRate * (end - info.lastClaimAt)) / 1 days;
     }
 
-    /// @notice $JUICE/day this specific token currently earns (baseDailyReward
-    /// x its rarity multiplier). Live, not locked in at stake time.
-    function dailyRewardRate(uint256 tokenId) public view returns (uint256) {
-        uint256 bps = rarityMultiplierBps[tokenRarity[tokenId]];
-        return (baseDailyReward * bps) / 10_000;
+    /// @notice Quote the $JUICE/day a (token, duration) pair would earn at the
+    /// current rates — for UI estimates before staking. Reverts if the token's
+    /// rarity isn't set yet.
+    function quoteDailyRate(uint256 tokenId, Duration duration) external view returns (uint256) {
+        return _quoteDailyRate(tokenId, duration);
+    }
+
+    function _quoteDailyRate(uint256 tokenId, Duration duration) internal view returns (uint256) {
+        uint256 rarityBps = rarityMultiplierBps[tokenRarity[tokenId]];
+        if (rarityBps == 0) revert RarityNotSet();
+        uint256 durBps = durationMultiplierBps[duration];
+        return (baseDailyReward * rarityBps * durBps) / (10_000 * 10_000);
+    }
+
+    function _durationSeconds(Duration duration) internal pure returns (uint256) {
+        if (duration == Duration.THREE_MONTHS) return 90 days;
+        if (duration == Duration.SIX_MONTHS) return 180 days;
+        return 365 days;
     }
 
     /* ─────────────────────────────── Views ────────────────────────────────── */
@@ -322,21 +369,22 @@ contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
         }
     }
 
-    /// @notice Adjust a rarity tier's multiplier, or add a new tier. Applies
-    /// to every affected stake's ENTIRE unclaimed window (time already
-    /// staked but not yet claimed included) the next time it's claimed or
-    /// unstaked — see the contract-level note. Already-claimed rewards are
-    /// unaffected; they're already minted.
+    /// @notice Adjust a rarity tier's multiplier. Only affects stakes made
+    /// after the change — running stakes keep their snapshotted rate.
     function setRarityMultiplier(string calldata rarity, uint256 bps) external onlyOwner {
         rarityMultiplierBps[rarity] = bps;
     }
 
-    /// @notice Retune the Common-rarity $JUICE/day rate. No redeploy needed.
-    /// Applies to every stake's ENTIRE unclaimed window (time already
-    /// staked but not yet claimed included) the next time it's claimed or
-    /// unstaked — see the contract-level note. Already-claimed rewards are
-    /// unaffected; they're already minted. To cut over cleanly, get holders
-    /// to claim (or run claimAllRewards for them) before calling this.
+    /// @notice Adjust a lock duration's multiplier. Only affects stakes made
+    /// after the change — running stakes keep their snapshotted rate.
+    function setDurationMultiplier(Duration duration, uint256 bps) external onlyOwner {
+        durationMultiplierBps[duration] = bps;
+        emit DurationMultiplierUpdated(duration, bps);
+    }
+
+    /// @notice Retune the base $JUICE/day rate. No redeploy needed. Only
+    /// affects stakes made after the change — running stakes keep their
+    /// snapshotted rate.
     function setBaseDailyReward(uint256 _baseDailyReward) external onlyOwner {
         baseDailyReward = _baseDailyReward;
         emit BaseDailyRewardUpdated(_baseDailyReward);

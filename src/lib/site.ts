@@ -57,8 +57,8 @@ export const TOOLS: Tool[] = [
     live: true,
   },
   {
-    name: "JUICE",
-    blurb: "The Hood needs a scoreboard. Earn it by actually using the protocol.",
+    name: "Staking",
+    blurb: "Lock your Boys to earn $JUICE — the Hood's scoreboard. Longer locks, bigger rewards.",
     href: "/juice",
     image: ART.snowboard,
     tint: "var(--violet)",

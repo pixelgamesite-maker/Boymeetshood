@@ -9,7 +9,14 @@ import { wagmiConfig } from "@/lib/wagmi";
 import { CONTRACTS } from "@/lib/contracts";
 import { juiceStakingAbi, juiceTokenAbi } from "@/lib/abis/staking";
 import { erc721Abi } from "@/lib/abis/tokens";
-import { type Address, type Rarity, type Stake } from "@/types/staking";
+import {
+  DURATION_TO_ENUM,
+  durationFromEnum,
+  type Address,
+  type Rarity,
+  type Stake,
+  type StakeDuration,
+} from "@/types/staking";
 import { useMyAddress, useMyBoys } from "@/hooks/useLending";
 
 // Re-exported so a page importing from this hook doesn't also need to know
@@ -142,7 +149,7 @@ export function useMyStakes(): Query<Stake[]> {
 
       if (ids.length === 0) return [];
 
-      const [infos, rarities, rates] = await Promise.all([
+      const [infos, rarities] = await Promise.all([
         readContracts(wagmiConfig, {
           allowFailure: false,
           contracts: ids.map((id) => ({
@@ -159,20 +166,15 @@ export function useMyStakes(): Query<Stake[]> {
             args: [id] as const,
           })),
         }),
-        readContracts(wagmiConfig, {
-          allowFailure: true,
-          contracts: ids.map((id) => ({
-            ...staking,
-            functionName: "dailyRewardRate" as const,
-            args: [id] as const,
-          })),
-        }),
       ]);
 
       type StakeTuple = {
         owner: Address;
         stakedAt: number;
+        unlockTime: number;
         lastClaimAt: number;
+        duration: number;
+        rewardRate: bigint;
         claimedReward: bigint;
         isStaked: boolean;
       };
@@ -183,19 +185,20 @@ export function useMyStakes(): Query<Stake[]> {
           const rarityResult = rarities[i];
           const rarityValue =
             rarityResult.status === "success" ? (rarityResult.result as string) : "";
-          const rateResult = rates[i];
 
           return {
             tokenId: Number(id),
             owner: info.owner,
             stakedAt: Number(info.stakedAt),
+            unlockTime: Number(info.unlockTime),
             lastClaimAt: Number(info.lastClaimAt),
+            duration: durationFromEnum(Number(info.duration)),
+            dailyRate: info.rewardRate,
             claimedReward: info.claimedReward,
             isStaked: info.isStaked,
             rarity: (RARITY_TIERS as string[]).includes(rarityValue)
               ? (rarityValue as Rarity)
               : null,
-            dailyRate: rateResult.status === "success" ? (rateResult.result as bigint) : 0n,
           };
         })
         .filter((s) => s.isStaked)
@@ -238,6 +241,7 @@ function readableError(e: unknown): string {
   if (/NotTokenOwner/.test(raw)) return "You don't own that Boy.";
   if (/NotStaked/.test(raw)) return "That Boy isn't staked.";
   if (/NotStakeOwner/.test(raw)) return "That isn't your stake.";
+  if (/StillLocked/.test(raw)) return "This Boy is still locked — wait until the term ends to unstake.";
   if (/InsufficientFee/.test(raw)) return "The staking fee wasn't fully covered.";
   if (/NothingToClaim/.test(raw)) return "Nothing to claim yet.";
   if (/BadBundle/.test(raw)) return "Pick between 1 and 50 Boys.";
@@ -299,7 +303,7 @@ async function currentStakeFee(): Promise<bigint> {
 
 export function useStake() {
   const me = useMyAddress();
-  return useAction(async (tokenId: number) => {
+  return useAction(async (tokenId: number, duration: StakeDuration) => {
     if (!me) throw new Error("Connect a wallet first.");
     await ensureBoysApprovedForStaking(me);
     const fee = await currentStakeFee();
@@ -308,7 +312,7 @@ export function useStake() {
       await writeContract(wagmiConfig, {
         ...staking,
         functionName: "stake",
-        args: [BigInt(tokenId)],
+        args: [BigInt(tokenId), DURATION_TO_ENUM[duration]],
         value: fee,
       }),
     );
@@ -317,7 +321,7 @@ export function useStake() {
 
 export function useStakeAll() {
   const me = useMyAddress();
-  return useAction(async (tokenIds: number[]) => {
+  return useAction(async (tokenIds: number[], duration: StakeDuration) => {
     if (!me) throw new Error("Connect a wallet first.");
     await ensureBoysApprovedForStaking(me);
     const fee = (await currentStakeFee()) * BigInt(tokenIds.length);
@@ -326,7 +330,7 @@ export function useStakeAll() {
       await writeContract(wagmiConfig, {
         ...staking,
         functionName: "stakeAll",
-        args: [tokenIds.map(BigInt)],
+        args: [tokenIds.map(BigInt), DURATION_TO_ENUM[duration]],
         value: fee,
       }),
     );

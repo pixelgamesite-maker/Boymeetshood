@@ -14,7 +14,16 @@ import {
   Stat,
 } from "@/components/lending/primitives";
 import { formatJuice, juiceToNumber } from "@/lib/format";
-import { RARITY_BOOSTER, RARITY_ORDER, type Rarity, type Stake } from "@/types/staking";
+import {
+  DURATION_BOOSTER,
+  DURATION_LABEL,
+  DURATIONS,
+  RARITY_BOOSTER,
+  RARITY_ORDER,
+  type Rarity,
+  type Stake,
+  type StakeDuration,
+} from "@/types/staking";
 import {
   useBaseDailyReward,
   useClaimAllRewards,
@@ -61,9 +70,9 @@ export default function Juice() {
             className="m-0 mt-4 max-w-[62ch] text-[15.5px] leading-relaxed"
             style={{ color: "var(--fg-dim)" }}
           >
-            Stake a Boy and it earns $JUICE continuously, boosted by rarity,
-            for as long as it stays staked. No lock: unstake anytime and keep
-            whatever's accrued.
+            Lock a Boy for 3, 6 or 12 months and it earns $JUICE continuously,
+            boosted by both its rarity and the lock length. Claim your rewards
+            anytime during the term; the Boy unlocks when the term ends.
           </p>
 
           {!me && (
@@ -97,7 +106,7 @@ function RewardTable() {
   return (
     <Panel className="mt-8">
       <p className="m-0 text-[13px] font-bold uppercase tracking-wide" style={{ color: "var(--fg-faint)" }}>
-        How much you earn, per day
+        Base rate per day, by rarity
       </p>
 
       <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
@@ -125,6 +134,25 @@ function RewardTable() {
           ))}
       </div>
 
+      <p className="m-0 mt-5 text-[12px] font-bold uppercase tracking-wide" style={{ color: "var(--fg-faint)" }}>
+        Lock longer, earn more
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {DURATIONS.map((d) => (
+          <span
+            key={d}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-bold"
+            style={{ background: "rgba(255,255,255,0.07)", color: "#fff" }}
+          >
+            {DURATION_LABEL[d]}
+            <span style={{ color: "var(--lime)", fontFamily: "var(--mono)" }}>{DURATION_BOOSTER[d]}×</span>
+          </span>
+        ))}
+      </div>
+      <p className="m-0 mt-3 text-[12px] leading-relaxed" style={{ color: "var(--fg-faint)" }}>
+        Your rate is base × rarity × lock multiplier, locked in when you stake. Boys are held for the
+        full term; claim rewards anytime, unstake once the term ends.
+      </p>
     </Panel>
   );
 }
@@ -139,6 +167,7 @@ function StakeSection() {
   const rarities = useTokenRarities(tokenIds);
   const base = useBaseDailyReward();
   const [selected, setSelected] = useState<number[]>([]);
+  const [duration, setDuration] = useState<StakeDuration>("3");
 
   const stake = useStake();
   const stakeAll = useStakeAll();
@@ -152,16 +181,20 @@ function StakeSection() {
     if (base.data === undefined) return undefined;
     const rarityData = rarities.data ?? {};
     const baseRate = juiceToNumber(base.data);
+    const durBooster = DURATION_BOOSTER[duration];
     return selected.reduce((sum: number, id: number) => {
       const rarity = rarityData[id];
       const booster = rarity ? RARITY_BOOSTER[rarity] : 1;
-      return sum + baseRate * booster;
+      return sum + baseRate * booster * durBooster;
     }, 0);
-  }, [selected, base.data, rarities.data]);
+  }, [selected, duration, base.data, rarities.data]);
 
   async function onStake() {
     if (selected.length === 0) return;
-    const ok = selected.length === 1 ? await stake.run(selected[0]) : await stakeAll.run(selected);
+    const ok =
+      selected.length === 1
+        ? await stake.run(selected[0], duration)
+        : await stakeAll.run(selected, duration);
     if (ok) {
       setSelected([]);
       boys.refetch();
@@ -187,6 +220,43 @@ function StakeSection() {
         />
       ) : (
         <>
+          {/* Lock-length picker — longer locks earn a higher multiplier. */}
+          <div className="mb-5">
+            <p className="m-0 mb-2 text-[12px] font-bold uppercase tracking-wide" style={{ color: "var(--fg-faint)" }}>
+              Lock length
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {DURATIONS.map((d) => {
+                const on = duration === d;
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDuration(d)}
+                    className="rounded-[14px] px-4 py-2.5 text-left transition-colors"
+                    style={{
+                      background: on ? "var(--lime)" : "var(--ink-3)",
+                      color: on ? "var(--ink)" : "#fff",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span className="block text-[14px] font-extrabold">{DURATION_LABEL[d]}</span>
+                    <span
+                      className="block text-[11px] font-bold"
+                      style={{ fontFamily: "var(--mono)", color: on ? "var(--ink)" : "var(--lime)" }}
+                    >
+                      {DURATION_BOOSTER[d]}× rewards
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="m-0 mt-2 text-[11px]" style={{ color: "var(--fg-faint)" }}>
+              Boys are locked for the full term — no early unstake. You can still claim rewards anytime.
+            </p>
+          </div>
+
           <div
             className="grid gap-3"
             style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
@@ -207,7 +277,7 @@ function StakeSection() {
             <div>
               <p className="m-0 text-[12px]" style={{ color: "var(--fg-faint)" }}>
                 Estimated rate for {selected.length || 0} Boy
-                {selected.length === 1 ? "" : "s"}
+                {selected.length === 1 ? "" : "s"} · {DURATION_LABEL[duration]} lock
               </p>
               <p
                 className="m-0 mt-1 text-[20px] font-extrabold"
@@ -224,7 +294,7 @@ function StakeSection() {
                 ? "Staking…"
                 : selected.length === 0
                   ? "Pick Boys to stake"
-                  : `Stake ${selected.length} Boy${selected.length === 1 ? "" : "s"}`}
+                  : `Stake ${selected.length} Boy${selected.length === 1 ? "" : "s"} · ${DURATION_LABEL[duration]}`}
             </Button>
           </div>
 
@@ -340,15 +410,18 @@ function StakeCard({ stake, onChanged }: { stake: Stake; onChanged: () => void }
   const unstake = useUnstake();
   const claim = useClaimRewards();
 
-  const staked = Math.max(0, now - stake.stakedAt);
-  const stakedLabel = `${Math.floor(staked / 86_400)}d ${Math.floor((staked % 86_400) / 3_600)}h staked`;
+  const unlocked = now >= stake.unlockTime;
+  const remaining = Math.max(0, stake.unlockTime - now);
+  const lockLabel = unlocked
+    ? "Unlocked"
+    : `${Math.floor(remaining / 86_400)}d ${Math.floor((remaining % 86_400) / 3_600)}h left`;
 
   // Live mirror of the contract's calculateRewards:
-  //   dailyRate * (now - lastClaimAt) / 1 day
-  // Recomputed every second (useNow ticks at 1000ms), so the figure counts
-  // up in real time between claims — same formula the chain uses, so a claim
-  // mints essentially what's shown here.
-  const elapsed = Math.max(0, now - stake.lastClaimAt);
+  //   dailyRate * (min(now, unlockTime) - lastClaimAt) / 1 day
+  // Accrual is bounded by the unlock time, so the counter stops ticking once
+  // the term ends — same as the chain. Recomputed every second via useNow.
+  const end = Math.min(now, stake.unlockTime);
+  const elapsed = Math.max(0, end - stake.lastClaimAt);
   const pending = (stake.dailyRate * BigInt(elapsed)) / 86_400n;
   const hasPending = pending > 0n;
 
@@ -377,7 +450,8 @@ function StakeCard({ stake, onChanged }: { stake: Stake; onChanged: () => void }
             <p className="m-0 text-[14px] font-extrabold">BoyMeetsH00d #{stake.tokenId}</p>
             <div className="mt-1 flex items-center gap-2">
               {stake.rarity && <Pill tone="sky">{stake.rarity}</Pill>}
-              <Pill tone="neutral">{stakedLabel}</Pill>
+              <Pill tone="neutral">{DURATION_LABEL[stake.duration]}</Pill>
+              <Pill tone={unlocked ? "lime" : "neutral"}>{lockLabel}</Pill>
             </div>
           </div>
         </div>
@@ -407,12 +481,12 @@ function StakeCard({ stake, onChanged }: { stake: Stake; onChanged: () => void }
         </Button>
 
         <Button
-          disabled={busy}
+          disabled={busy || !unlocked}
           onClick={async () => {
             if (await unstake.run(stake.tokenId)) onChanged();
           }}
         >
-          {unstake.pending ? "Unstaking…" : "Unstake"}
+          {unstake.pending ? "Unstaking…" : unlocked ? "Unstake" : `Locked · ${lockLabel}`}
         </Button>
       </div>
 

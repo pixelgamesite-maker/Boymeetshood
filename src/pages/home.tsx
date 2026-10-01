@@ -157,15 +157,13 @@ function Hero() {
           >
             Enter the Hood
           </Link>
-          <a
-            href={LINKS.opensea}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/juice"
             className="inline-flex items-center justify-center rounded-full px-9 py-4 text-[15px] font-extrabold"
             style={{ border: "2px solid rgba(255,255,255,0.35)", color: "#fff" }}
           >
-            Join the Boys
-          </a>
+            Stake Your Boys
+          </Link>
         </div>
 
         <dl
@@ -181,23 +179,41 @@ function Hero() {
               ["Supply", COLLECTION.supply],
               ["Chain", COLLECTION.chain],
               ["Settles in", "USDG or ETH"],
-              ["Lending", "Live"],
-            ] as [string, string][]
-          ).map(([label, value]) => (
-            <div key={label} className="px-5 py-5" style={{ background: "var(--ink-2)" }}>
-              <dt
-                className="m-0 text-[11px] uppercase"
-                style={{
-                  fontFamily: "var(--mono)",
-                  letterSpacing: "0.14em",
-                  color: "var(--fg-faint)",
-                }}
+              ["Marketplace", "Join the Boys", LINKS.opensea],
+            ] as [string, string, string?][]
+          ).map(([label, value, href]) => {
+            const inner = (
+              <>
+                <dt
+                  className="m-0 text-[11px] uppercase"
+                  style={{
+                    fontFamily: "var(--mono)",
+                    letterSpacing: "0.14em",
+                    color: "var(--fg-faint)",
+                  }}
+                >
+                  {label}
+                </dt>
+                <dd className="m-0 mt-1.5 text-[15px] font-extrabold">{value}</dd>
+              </>
+            );
+            return href ? (
+              <a
+                key={label}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-5 transition-[filter] hover:brightness-125"
+                style={{ background: "var(--ink-2)" }}
               >
-                {label}
-              </dt>
-              <dd className="m-0 mt-1.5 text-[15px] font-extrabold">{value}</dd>
-            </div>
-          ))}
+                {inner}
+              </a>
+            ) : (
+              <div key={label} className="px-5 py-5" style={{ background: "var(--ink-2)" }}>
+                {inner}
+              </div>
+            );
+          })}
         </dl>
       </div>
     </section>

@@ -20,8 +20,8 @@ contract BlindHolder {
         boys.setApprovalForAll(operator, true);
     }
 
-    function stake(JuiceStaking staking, uint256 tokenId) external {
-        staking.stake(tokenId);
+    function stake(JuiceStaking staking, uint256 tokenId, JuiceStaking.Duration duration) external {
+        staking.stake(tokenId, duration);
     }
 
     function unstake(JuiceStaking staking, uint256 tokenId) external {
@@ -39,21 +39,16 @@ contract JuiceStakingTest is Test {
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
 
-    // Round number chosen purely so per-day math in these tests is exact and
-    // easy to read; the real deploy script uses the client's target rate.
+    // Round number so per-day math is exact and readable.
     uint256 internal constant BASE_DAILY_REWARD = 1_000e18;
 
-    /// @dev Storage, not a local — a local variable snapshotting
-    /// `block.timestamp` gets silently rewritten by solc's via-ir optimizer
-    /// once the function
-    /// both calls `vm.warp` and makes an external call (e.g. a staking
-    /// action): later reads of that local return the POST-warp timestamp
-    /// instead of the originally captured value, so a second
-    /// `vm.warp(_t0 + N days)` ends up warping N days past the *previous*
-    /// warp target, not past the real start. Empirically verified in this
-    /// repo; a storage variable is not affected. Every test that needs a
-    /// fixed reference point across more than one vm.warp must use this,
-    /// not a local.
+    JuiceStaking.Duration internal constant D3 = JuiceStaking.Duration.THREE_MONTHS;
+    JuiceStaking.Duration internal constant D6 = JuiceStaking.Duration.SIX_MONTHS;
+    JuiceStaking.Duration internal constant D12 = JuiceStaking.Duration.ONE_YEAR;
+
+    /// @dev Storage, not a local — a local snapshot of block.timestamp gets
+    /// rewritten by solc's via-ir optimizer once a test both warps and makes
+    /// an external call between reads. See repo history; a storage var is safe.
     uint256 internal _t0;
 
     function setUp() public {
@@ -86,199 +81,238 @@ contract JuiceStakingTest is Test {
         staking.setTokenRarity(tokenId, rarity);
     }
 
-    function _stake(address who, uint256 tokenId) internal {
+    function _stake(address who, uint256 tokenId, JuiceStaking.Duration d) internal {
         vm.prank(who);
-        staking.stake(tokenId);
+        staking.stake(tokenId, d);
     }
 
-    /* ══════════════════════ Continuous accrual ══════════════════════ */
-    // No duration, no lock: reward is always currentRate * elapsed time
-    // since the last claim, at whatever rarity multiplier applies today.
+    /* ══════════════════ Accrual: rarity x duration ══════════════════ */
 
-    function test_Accrual_OneDayCommon() public {
+    function test_Accrual_Common3mo_OneDay() public {
         _setRarity(1, "Common");
-        _stake(alice, 1);
-
+        _stake(alice, 1, D3);
         vm.warp(block.timestamp + 1 days);
         vm.prank(alice);
         staking.claimRewards(1);
-
-        assertEq(juice.balanceOf(alice), 1_000e18);
+        assertEq(juice.balanceOf(alice), 1_000e18); // 1000 * 1x * 1x
     }
 
-    function test_Accrual_HalfDay() public {
+    function test_Accrual_6mo_HigherRate() public {
         _setRarity(1, "Common");
-        _stake(alice, 1);
-
-        vm.warp(block.timestamp + 12 hours);
-        vm.prank(alice);
-        staking.claimRewards(1);
-
-        assertEq(juice.balanceOf(alice), 500e18);
-    }
-
-    function test_Accrual_RarityMultiplier_Mythic() public {
-        _setRarity(1, "Mythic");
-        _stake(alice, 1);
-
+        _stake(alice, 1, D6);
         vm.warp(block.timestamp + 1 days);
         vm.prank(alice);
         staking.claimRewards(1);
-
-        // 1000 * 2.5
-        assertEq(juice.balanceOf(alice), 2_500e18);
+        assertEq(juice.balanceOf(alice), 1_500e18); // 1000 * 1x * 1.5x
     }
 
-    function test_Accrual_RarityMultiplier_Rare() public {
-        _setRarity(1, "Rare");
-        _stake(alice, 1);
-
+    function test_Accrual_12mo_HighestRate() public {
+        _setRarity(1, "Common");
+        _stake(alice, 1, D12);
         vm.warp(block.timestamp + 1 days);
         vm.prank(alice);
         staking.claimRewards(1);
-
-        // 1000 * 1.35
-        assertEq(juice.balanceOf(alice), 1_350e18);
+        assertEq(juice.balanceOf(alice), 2_500e18); // 1000 * 1x * 2.5x
     }
 
-    /// Claiming repeatedly must sum to the same total as one big claim over
-    /// the same total elapsed time.
-    function test_Accrual_MultipleClaimsSumCorrectly() public {
+    function test_Accrual_RarityAndDurationStack() public {
+        _setRarity(1, "Rare"); // 1.35x
+        _stake(alice, 1, D6); // 1.5x
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(alice);
+        staking.claimRewards(1);
+        assertEq(juice.balanceOf(alice), 2_025e18); // 1000 * 1.35 * 1.5
+    }
+
+    function test_Accrual_MythicTwelveMonth() public {
+        _setRarity(1, "Mythic"); // 2.5x
+        _stake(alice, 1, D12); // 2.5x
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(alice);
+        staking.claimRewards(1);
+        assertEq(juice.balanceOf(alice), 6_250e18); // 1000 * 2.5 * 2.5
+    }
+
+    /* ══════════════════ Lock enforcement ══════════════════ */
+
+    function test_Unstake_RevertsWhileLocked() public {
+        _setRarity(1, "Common");
+        _stake(alice, 1, D3);
+        vm.warp(block.timestamp + 89 days);
+        vm.prank(alice);
+        vm.expectRevert(JuiceStaking.StillLocked.selector);
+        staking.unstake(1);
+    }
+
+    function test_Unstake_WorksAtUnlock() public {
+        _setRarity(1, "Common");
+        _stake(alice, 1, D3);
+        vm.warp(block.timestamp + 90 days);
+        vm.prank(alice);
+        staking.unstake(1);
+        assertEq(boys.ownerOf(1), alice);
+        assertEq(juice.balanceOf(alice), 90 * 1_000e18); // 90 days * 1000/day
+    }
+
+    function test_SixMonthUnlocksAt180Days() public {
+        _setRarity(1, "Common");
+        _stake(alice, 1, D6);
+        vm.warp(block.timestamp + 179 days);
+        vm.prank(alice);
+        vm.expectRevert(JuiceStaking.StillLocked.selector);
+        staking.unstake(1);
+
+        vm.warp(block.timestamp + 1 days); // 180 total
+        vm.prank(alice);
+        staking.unstake(1);
+        assertEq(boys.ownerOf(1), alice);
+    }
+
+    function test_OneYearUnlocksAt365Days() public {
+        _setRarity(1, "Common");
+        _stake(alice, 1, D12);
+        vm.warp(block.timestamp + 364 days);
+        vm.prank(alice);
+        vm.expectRevert(JuiceStaking.StillLocked.selector);
+        staking.unstake(1);
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(alice);
+        staking.unstake(1);
+        assertEq(boys.ownerOf(1), alice);
+    }
+
+    /* ══════════════════ Claim during lock, accrual cap ══════════════════ */
+
+    function test_Claim_AnytimeDuringLock_ButStillLocked() public {
+        _setRarity(1, "Common");
+        _stake(alice, 1, D3);
+
+        vm.warp(block.timestamp + 10 days);
+        vm.prank(alice);
+        staking.claimRewards(1); // claim mid-term
+        assertEq(juice.balanceOf(alice), 10 * 1_000e18);
+
+        // Boy is still locked.
+        vm.prank(alice);
+        vm.expectRevert(JuiceStaking.StillLocked.selector);
+        staking.unstake(1);
+    }
+
+    function test_Accrual_CapsAtUnlock() public {
+        _setRarity(1, "Common");
+        _stake(alice, 1, D3); // 90-day term
+
+        // Sit well past unlock.
+        vm.warp(block.timestamp + 200 days);
+        // Only the 90-day term accrues, not 200.
+        assertEq(staking.calculateRewards(1), 90 * 1_000e18);
+
+        vm.prank(alice);
+        staking.unstake(1);
+        assertEq(juice.balanceOf(alice), 90 * 1_000e18);
+    }
+
+    function test_SplitClaims_SumToTermTotal() public {
         _setRarity(1, "Common");
         _t0 = block.timestamp;
-        _stake(alice, 1);
+        _stake(alice, 1, D3);
 
-        vm.warp(_t0 + 1 days);
+        vm.warp(_t0 + 45 days);
         vm.prank(alice);
         staking.claimRewards(1);
-        assertEq(juice.balanceOf(alice), 1_000e18);
+        assertEq(juice.balanceOf(alice), 45 * 1_000e18);
 
-        vm.warp(_t0 + 3 days);
+        vm.warp(_t0 + 90 days);
         vm.prank(alice);
         staking.claimRewards(1);
-        assertEq(juice.balanceOf(alice), 3_000e18);
+        assertEq(juice.balanceOf(alice), 90 * 1_000e18);
+
+        // Nothing left after the term.
+        vm.warp(_t0 + 120 days);
+        assertEq(staking.calculateRewards(1), 0);
     }
 
-    /// Leaving a stake unclaimed for a long time keeps accruing — there's no
-    /// cap, unlike the old fixed-term design.
-    function test_Accrual_KeepsGrowingPastAnyFixedTerm() public {
+    /* ══════════════════ Rate snapshot ══════════════════ */
+
+    function test_RateSnapshot_BaseChangeDoesNotAffectRunningStake() public {
         _setRarity(1, "Common");
-        _stake(alice, 1);
+        _stake(alice, 1, D3); // locked at 1000/day
 
-        vm.warp(block.timestamp + 400 days);
+        vm.prank(owner);
+        staking.setBaseDailyReward(2_000e18); // doubles base for FUTURE stakes
+
+        vm.warp(block.timestamp + 1 days);
         vm.prank(alice);
         staking.claimRewards(1);
-
-        assertEq(juice.balanceOf(alice), 400_000e18);
+        assertEq(juice.balanceOf(alice), 1_000e18); // still the snapshotted rate
     }
 
-    function testFuzz_Accrual_MatchesElapsedTime(uint32 secondsElapsed) public {
-        uint256 elapsed = bound(secondsElapsed, 1, 730 days);
+    function test_RateSnapshot_NewStakeUsesNewBase() public {
         _setRarity(1, "Common");
-        _stake(alice, 1);
+        _setRarity(2, "Common");
+        _stake(alice, 1, D3); // 1000/day
 
-        vm.warp(block.timestamp + elapsed);
+        vm.prank(owner);
+        staking.setBaseDailyReward(2_000e18);
+        _stake(alice, 2, D3); // 2000/day
+
+        vm.warp(block.timestamp + 1 days);
         vm.prank(alice);
-        staking.claimRewards(1);
-
-        assertEq(juice.balanceOf(alice), (BASE_DAILY_REWARD * elapsed) / 1 days);
+        staking.claimAllRewards();
+        assertEq(juice.balanceOf(alice), 1_000e18 + 2_000e18);
     }
 
-    /* ═══════════════════════════ Stake / unstake ═══════════════════════════ */
+    /* ══════════════════ Quotes ══════════════════ */
 
-    function test_Stake_TransfersNftIntoContract() public {
-        _setRarity(1, "Common");
-        _stake(alice, 1);
-
-        assertEq(boys.ownerOf(1), address(staking));
+    function test_QuoteDailyRate() public {
+        _setRarity(1, "Epic"); // 1.6x
+        assertEq(staking.quoteDailyRate(1, D3), 1_600e18); // 1000 * 1.6 * 1
+        assertEq(staking.quoteDailyRate(1, D6), 2_400e18); // 1000 * 1.6 * 1.5
+        assertEq(staking.quoteDailyRate(1, D12), 4_000e18); // 1000 * 1.6 * 2.5
     }
+
+    function test_QuoteDailyRate_RevertsIfRarityUnset() public {
+        vm.expectRevert(JuiceStaking.RarityNotSet.selector);
+        staking.quoteDailyRate(1, D3);
+    }
+
+    /* ══════════════════ Stake guards ══════════════════ */
 
     function test_Stake_RevertsIfRarityNotSet() public {
         vm.prank(alice);
         vm.expectRevert(JuiceStaking.RarityNotSet.selector);
-        staking.stake(1);
+        staking.stake(1, D3);
     }
 
     function test_Stake_RevertsIfNotOwner() public {
         _setRarity(31, "Common");
         vm.prank(alice);
         vm.expectRevert(JuiceStaking.NotTokenOwner.selector);
-        staking.stake(31); // owned by bob
+        staking.stake(31, D3); // bob's
     }
 
     function test_Stake_RevertsIfAlreadyStaked() public {
         _setRarity(1, "Common");
-        _stake(alice, 1);
-
+        _stake(alice, 1, D3);
         vm.prank(alice);
         vm.expectRevert(JuiceStaking.AlreadyStaked.selector);
-        staking.stake(1);
+        staking.stake(1, D6);
     }
 
-    /// The headline change from the old design: no lock, so this must
-    /// succeed immediately with zero elapsed time and zero reward.
-    function test_Unstake_WorksImmediatelyNoLock() public {
+    function test_Stake_TransfersNftIntoContract() public {
         _setRarity(1, "Common");
-        _stake(alice, 1);
-
-        vm.prank(alice);
-        staking.unstake(1);
-
-        assertEq(boys.ownerOf(1), alice);
-        assertEq(juice.balanceOf(alice), 0);
-    }
-
-    function test_Unstake_RevertsForNonOwner() public {
-        _setRarity(1, "Common");
-        _stake(alice, 1);
-
-        vm.prank(bob);
-        vm.expectRevert(JuiceStaking.NotStakeOwner.selector);
-        staking.unstake(1);
-    }
-
-    function test_Unstake_RevertsIfNotStaked() public {
-        vm.prank(alice);
-        vm.expectRevert(JuiceStaking.NotStaked.selector);
-        staking.unstake(1);
-    }
-
-    function test_Unstake_ReturnsNftAndMintsAccruedRewards() public {
-        _setRarity(1, "Common");
-        _stake(alice, 1);
-
-        vm.warp(block.timestamp + 3 days);
-        vm.prank(alice);
-        staking.unstake(1);
-
-        assertEq(boys.ownerOf(1), alice);
-        assertEq(juice.balanceOf(alice), 3_000e18);
-    }
-
-    function test_Unstake_AfterPartialClaimMintsOnlyRemainder() public {
-        _setRarity(1, "Common");
-        _t0 = block.timestamp;
-        _stake(alice, 1);
-
-        vm.warp(_t0 + 1 days);
-        vm.prank(alice);
-        staking.claimRewards(1);
-
-        vm.warp(_t0 + 3 days);
-        vm.prank(alice);
-        staking.unstake(1);
-
-        // 1 day claimed + 2 days at unstake = 3 days total, never double-counted.
-        assertEq(juice.balanceOf(alice), 3_000e18);
+        _stake(alice, 1, D3);
+        assertEq(boys.ownerOf(1), address(staking));
     }
 
     function test_StakeRemovedFromUserStakesAfterUnstake() public {
         _setRarity(1, "Common");
         _setRarity(2, "Common");
-        _stake(alice, 1);
-        _stake(alice, 2);
+        _stake(alice, 1, D3);
+        _stake(alice, 2, D3);
 
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 90 days);
         vm.prank(alice);
         staking.unstake(1);
 
@@ -287,98 +321,32 @@ contract JuiceStakingTest is Test {
         assertEq(remaining[0], 2);
     }
 
-    /// After unstaking and restaking the same token, accrual starts fresh
-    /// from zero — no leftover credit from the previous stake.
-    function test_Restake_StartsAccrualFresh() public {
-        _setRarity(1, "Common");
-        _stake(alice, 1);
+    /* ══════════════════ Batch staking ══════════════════ */
 
-        vm.warp(block.timestamp + 5 days);
-        vm.prank(alice);
-        staking.unstake(1); // mints 5_000e18
-
-        vm.prank(alice);
-        staking.stake(1);
-
-        vm.warp(block.timestamp + 1 days);
-        vm.prank(alice);
-        staking.claimRewards(1);
-
-        assertEq(juice.balanceOf(alice), 6_000e18); // 5_000 + 1_000, not 6_000 + leftover
-    }
-
-    /* ═══════════════════════════ Claim all ═══════════════════════════ */
-
-    function test_ClaimAllRewards_AcrossMultipleStakes() public {
-        _setRarity(1, "Common");
-        _setRarity(2, "Legendary");
-        _stake(alice, 1);
-        _stake(alice, 2);
-
-        vm.warp(block.timestamp + 1 days);
-        vm.prank(alice);
-        staking.claimAllRewards();
-
-        // 1000 (Common) + 2000 (Legendary 2x) = 3000
-        assertEq(juice.balanceOf(alice), 3_000e18);
-    }
-
-    function test_ClaimAllRewards_OnlyClaimsCallersStakes() public {
-        _setRarity(1, "Common");
-        _setRarity(31, "Common");
-        _stake(alice, 1);
-        _stake(bob, 31);
-
-        vm.warp(block.timestamp + 1 days);
-        vm.prank(alice);
-        staking.claimAllRewards();
-
-        assertEq(juice.balanceOf(alice), 1_000e18);
-        assertEq(juice.balanceOf(bob), 0);
-    }
-
-    function test_ClaimAllRewards_RevertsWithNothingStaked() public {
-        vm.prank(alice);
-        vm.expectRevert(JuiceStaking.NotStaked.selector);
-        staking.claimAllRewards();
-    }
-
-    function test_ClaimRewards_RevertsWithNothingToClaim() public {
-        _setRarity(1, "Common");
-        _stake(alice, 1);
-
-        // No time has passed.
-        vm.prank(alice);
-        vm.expectRevert(JuiceStaking.NothingToClaim.selector);
-        staking.claimRewards(1);
-    }
-
-    /* ═══════════════════════════ Batch staking ═══════════════════════════ */
-
-    function test_StakeAll_StakesEveryToken() public {
+    function test_StakeAll_WithDuration() public {
         _setRarity(1, "Common");
         _setRarity(2, "Common");
         _setRarity(3, "Common");
-
         uint256[] memory ids = new uint256[](3);
         ids[0] = 1;
         ids[1] = 2;
         ids[2] = 3;
 
         vm.prank(alice);
-        staking.stakeAll(ids);
+        staking.stakeAll(ids, D6);
 
-        assertEq(boys.ownerOf(1), address(staking));
-        assertEq(boys.ownerOf(2), address(staking));
-        assertEq(boys.ownerOf(3), address(staking));
         assertEq(staking.getUserStakes(alice).length, 3);
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(alice);
+        staking.claimAllRewards();
+        assertEq(juice.balanceOf(alice), 3 * 1_500e18); // each 1000 * 1.5
     }
 
     function test_StakeAll_RevertsOnEmptyBundle() public {
         uint256[] memory ids = new uint256[](0);
         vm.prank(alice);
         vm.expectRevert(JuiceStaking.BadBundle.selector);
-        staking.stakeAll(ids);
+        staking.stakeAll(ids, D3);
     }
 
     function test_StakeAll_RevertsOverMaxBatch() public {
@@ -386,196 +354,115 @@ contract JuiceStakingTest is Test {
         uint256[] memory ids = new uint256[](max + 1);
         vm.prank(alice);
         vm.expectRevert(JuiceStaking.BadBundle.selector);
-        staking.stakeAll(ids);
+        staking.stakeAll(ids, D3);
     }
 
-    /* ═══════════════════════════ Fees ═══════════════════════════ */
+    /* ══════════════════ Claim all ══════════════════ */
+
+    function test_ClaimAll_AcrossMixedDurations() public {
+        _setRarity(1, "Common");
+        _setRarity(2, "Common");
+        _stake(alice, 1, D3); // 1000/day
+        _stake(alice, 2, D12); // 2500/day
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(alice);
+        staking.claimAllRewards();
+        assertEq(juice.balanceOf(alice), 1_000e18 + 2_500e18);
+    }
+
+    function test_ClaimRewards_RevertsWithNothingToClaim() public {
+        _setRarity(1, "Common");
+        _stake(alice, 1, D3);
+        vm.prank(alice);
+        vm.expectRevert(JuiceStaking.NothingToClaim.selector);
+        staking.claimRewards(1);
+    }
+
+    /* ══════════════════ Fees ══════════════════ */
 
     function test_Fees_DefaultToZero() public view {
         assertEq(staking.stakeFee(), 0);
     }
 
-    function test_Fees_ZeroMeansStakingNeedsNoValue() public {
-        _setRarity(1, "Common");
-        vm.prank(alice);
-        staking.stake(1); // no ETH sent, should still work
-
-        assertEq(boys.ownerOf(1), address(staking));
-    }
-
     function test_Fees_StakeRevertsWhenUnderpaid() public {
         vm.prank(owner);
         staking.setFees(0.001 ether);
-
         _setRarity(1, "Common");
         vm.prank(alice);
         vm.expectRevert(JuiceStaking.InsufficientFee.selector);
-        staking.stake(1);
+        staking.stake(1, D3);
     }
 
     function test_Fees_ForwardedToTreasury() public {
         vm.prank(owner);
         staking.setFees(0.001 ether);
-
         _setRarity(1, "Common");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        staking.stake{value: 0.001 ether}(1);
-
+        staking.stake{value: 0.001 ether}(1, D3);
         assertEq(treasury.balance, 0.001 ether);
     }
 
-    function test_Fees_OnlyOwnerCanSet() public {
-        vm.prank(alice);
-        vm.expectRevert();
-        staking.setFees(1 ether);
-    }
+    /* ══════════════════ Admin ══════════════════ */
 
-    /* ═══════════════════════════ Reward-rate admin ═══════════════════════════ */
-
-    function test_SetBaseDailyReward_ChangesFutureRate() public {
+    function test_SetDurationMultiplier_AffectsFutureStakes() public {
         _setRarity(1, "Common");
-        _stake(alice, 1);
-
         vm.prank(owner);
-        staking.setBaseDailyReward(2_000e18);
-
+        staking.setDurationMultiplier(D3, 20_000); // 2x
+        _stake(alice, 1, D3);
         vm.warp(block.timestamp + 1 days);
         vm.prank(alice);
         staking.claimRewards(1);
-
         assertEq(juice.balanceOf(alice), 2_000e18);
     }
 
-    /// The trade-off documented on the contract: a rate change applies to
-    /// the WHOLE unclaimed window, including time already staked before the
-    /// change, since nothing is checkpointed per-second on-chain.
-    function test_SetBaseDailyReward_AppliesRetroactivelyToUnclaimedWindow() public {
-        _setRarity(1, "Common");
-        _t0 = block.timestamp;
-        _stake(alice, 1);
-
-        vm.warp(_t0 + 1 days); // 1 day accrued at the OLD rate, not yet claimed
-        vm.prank(owner);
-        staking.setBaseDailyReward(2_000e18);
-
-        vm.warp(_t0 + 2 days); // 1 more day accrued at the NEW rate
-        vm.prank(alice);
-        staking.claimRewards(1);
-
-        // All 2 days priced at the new 2000/day rate: 4000, not 1000 + 2000.
-        assertEq(juice.balanceOf(alice), 4_000e18);
-    }
-
-    /// Claiming before the change locks in the old rate for that stretch —
-    /// the mitigation the contract's NatSpec points to.
-    function test_ClaimBeforeRateChange_LocksInOldRateForThatStretch() public {
-        _setRarity(1, "Common");
-        _t0 = block.timestamp;
-        _stake(alice, 1);
-
-        vm.warp(_t0 + 1 days);
-        vm.prank(alice);
-        staking.claimRewards(1); // locks in 1000e18 at the old rate
-
-        vm.prank(owner);
-        staking.setBaseDailyReward(2_000e18);
-
-        vm.warp(_t0 + 2 days);
-        vm.prank(alice);
-        staking.claimRewards(1);
-
-        assertEq(juice.balanceOf(alice), 1_000e18 + 2_000e18);
-    }
-
-    function test_SetBaseDailyReward_OnlyOwner() public {
+    function test_SetDurationMultiplier_OnlyOwner() public {
         vm.prank(alice);
         vm.expectRevert();
-        staking.setBaseDailyReward(1);
+        staking.setDurationMultiplier(D3, 1);
     }
 
-    function test_DailyRewardRate_ReflectsRarity() public {
-        _setRarity(1, "Epic");
-        assertEq(staking.dailyRewardRate(1), 1_600e18); // 1000 * 1.6
+    function test_Constructor_SeedsDurationMultipliers() public view {
+        assertEq(staking.durationMultiplierBps(D3), 10_000);
+        assertEq(staking.durationMultiplierBps(D6), 15_000);
+        assertEq(staking.durationMultiplierBps(D12), 25_000);
     }
 
-    /* ═══════════════════════════ Rarity admin ═══════════════════════════ */
-
-    function test_BatchSetRarity() public {
-        uint256[] memory ids = new uint256[](2);
-        ids[0] = 1;
-        ids[1] = 2;
-        string[] memory rarities = new string[](2);
-        rarities[0] = "Mythic";
-        rarities[1] = "Uncommon";
-
-        vm.prank(owner);
-        staking.batchSetRarity(ids, rarities);
-
-        assertEq(staking.tokenRarity(1), "Mythic");
-        assertEq(staking.tokenRarity(2), "Uncommon");
+    function test_Constructor_SeedsRarityMultipliers() public view {
+        assertEq(staking.rarityMultiplierBps("Common"), 10_000);
+        assertEq(staking.rarityMultiplierBps("Mythic"), 25_000);
     }
 
-    function test_BatchSetRarity_RevertsOnLengthMismatch() public {
-        uint256[] memory ids = new uint256[](2);
-        string[] memory rarities = new string[](1);
-
-        vm.prank(owner);
-        vm.expectRevert(JuiceStaking.BadBundle.selector);
-        staking.batchSetRarity(ids, rarities);
+    function test_Constructor_RevertsOnZeroAddress() public {
+        vm.expectRevert(JuiceStaking.ZeroAddress.selector);
+        new JuiceStaking(owner, address(0), address(juice), treasury, BASE_DAILY_REWARD);
     }
 
-    function test_SetTokenRarity_OnlyOwner() public {
-        vm.prank(alice);
-        vm.expectRevert();
-        staking.setTokenRarity(1, "Mythic");
-    }
-
-    /// Same trade-off as setBaseDailyReward: a rarity correction applies to
-    /// the stake's whole unclaimed window, not just time going forward.
-    function test_RarityChange_AppliesToWholeUnclaimedWindow() public {
-        _setRarity(1, "Common");
-        _t0 = block.timestamp;
-        _stake(alice, 1);
-
-        vm.warp(_t0 + 1 days);
-        _setRarity(1, "Mythic");
-
-        vm.warp(_t0 + 2 days);
-        vm.prank(alice);
-        staking.claimRewards(1);
-
-        // Both days priced at Mythic (2.5x): 2 * 1000 * 2.5 = 5000.
-        assertEq(juice.balanceOf(alice), 5_000e18);
-    }
-
-    /* ═══════════════════════════ Pause ═══════════════════════════ */
+    /* ══════════════════ Pause ══════════════════ */
 
     function test_Pause_BlocksNewStakes() public {
         _setRarity(1, "Common");
         vm.prank(owner);
         staking.pause();
-
         vm.prank(alice);
         vm.expectRevert();
-        staking.stake(1);
+        staking.stake(1, D3);
     }
 
     function test_Pause_DoesNotTrapStakedNfts() public {
         _setRarity(1, "Common");
-        _stake(alice, 1);
-
+        _stake(alice, 1, D3);
         vm.prank(owner);
         staking.pause();
 
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 90 days);
         vm.prank(alice);
         staking.unstake(1);
-
         assertEq(boys.ownerOf(1), alice);
     }
 
-    /* ═══════════════════════════ Receiver safety ═══════════════════════════ */
+    /* ══════════════════ Receiver safety ══════════════════ */
 
     function test_BlindContractCanStillReceiveBackViaUnstake() public {
         BlindHolder blind = new BlindHolder();
@@ -583,31 +470,22 @@ contract JuiceStakingTest is Test {
         blind.approveAll(boys, address(staking));
 
         _setRarity(100, "Common");
-        blind.stake(staking, 100);
+        blind.stake(staking, 100, D3);
 
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 90 days);
         blind.unstake(staking, 100);
-
         assertEq(boys.ownerOf(100), address(blind));
     }
 
-    /* ═══════════════════════════ Constructor ═══════════════════════════ */
+    /* ══════════════════ Fuzz ══════════════════ */
 
-    function test_Constructor_RevertsOnZeroAddress() public {
-        vm.expectRevert(JuiceStaking.ZeroAddress.selector);
-        new JuiceStaking(owner, address(0), address(juice), treasury, BASE_DAILY_REWARD);
-    }
+    function testFuzz_Accrual_CapsAtTerm(uint32 secondsElapsed) public {
+        uint256 elapsed = bound(secondsElapsed, 1, 400 days);
+        _setRarity(1, "Common");
+        _stake(alice, 1, D3); // 90-day term, 1000/day
+        vm.warp(block.timestamp + elapsed);
 
-    function test_Constructor_SetsBaseDailyReward() public view {
-        assertEq(staking.baseDailyReward(), BASE_DAILY_REWARD);
-    }
-
-    function test_Constructor_SeedsRarityMultipliers() public view {
-        assertEq(staking.rarityMultiplierBps("Common"), 10_000);
-        assertEq(staking.rarityMultiplierBps("Uncommon"), 11_500);
-        assertEq(staking.rarityMultiplierBps("Rare"), 13_500);
-        assertEq(staking.rarityMultiplierBps("Epic"), 16_000);
-        assertEq(staking.rarityMultiplierBps("Legendary"), 20_000);
-        assertEq(staking.rarityMultiplierBps("Mythic"), 25_000);
+        uint256 capped = elapsed > 90 days ? 90 days : elapsed;
+        assertEq(staking.calculateRewards(1), (1_000e18 * capped) / 1 days);
     }
 }

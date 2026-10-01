@@ -2,8 +2,15 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
+const NAV_LINKS: { label: string; href: string }[] = [
+  { label: "Home", href: "/" },
+  { label: "Lending", href: "/p2p" },
+  { label: "Staking", href: "/juice" },
+];
+
 export default function SiteHeader() {
   const [stuck, setStuck] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setStuck(window.scrollY > 12);
@@ -12,14 +19,23 @@ export default function SiteHeader() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Close the menu on route change / escape.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const opaque = stuck || menuOpen;
+
   return (
     <header
       className="fixed inset-x-0 top-0 z-50 transition-colors duration-200"
       style={{
-        background: stuck ? "rgba(11,8,24,0.88)" : "transparent",
-        backdropFilter: stuck ? "blur(20px)" : "none",
-        WebkitBackdropFilter: stuck ? "blur(20px)" : "none",
-        borderBottom: `1px solid ${stuck ? "var(--hairline)" : "transparent"}`,
+        background: opaque ? "rgba(11,8,24,0.92)" : "transparent",
+        backdropFilter: opaque ? "blur(20px)" : "none",
+        WebkitBackdropFilter: opaque ? "blur(20px)" : "none",
+        borderBottom: `1px solid ${opaque ? "var(--hairline)" : "transparent"}`,
       }}
     >
       <div className="mx-auto flex h-[72px] max-w-[1180px] items-center justify-between px-5 sm:px-8">
@@ -39,8 +55,72 @@ export default function SiteHeader() {
           </span>
         </Link>
 
-        <HoodConnectButton />
+        <div className="flex items-center gap-3">
+          {/* Inline nav on wider screens */}
+          <nav className="hidden items-center gap-1 md:flex">
+            {NAV_LINKS.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="rounded-full px-4 py-2 text-[14px] font-bold transition-colors"
+                style={{ color: "#fff" }}
+              >
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+
+          <HoodConnectButton />
+
+          {/* Hamburger — toggles the dropdown menu */}
+          <button
+            type="button"
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
+            className="flex h-[42px] w-[42px] items-center justify-center rounded-full md:hidden"
+            style={{ background: "rgba(255,255,255,0.07)", border: "1px solid var(--hairline)" }}
+          >
+            <div className="flex flex-col items-center justify-center gap-[5px]">
+              <span
+                className="block h-[2px] w-[18px] rounded-full transition-transform"
+                style={{
+                  background: "#fff",
+                  transform: menuOpen ? "translateY(7px) rotate(45deg)" : "none",
+                }}
+              />
+              <span
+                className="block h-[2px] w-[18px] rounded-full transition-opacity"
+                style={{ background: "#fff", opacity: menuOpen ? 0 : 1 }}
+              />
+              <span
+                className="block h-[2px] w-[18px] rounded-full transition-transform"
+                style={{
+                  background: "#fff",
+                  transform: menuOpen ? "translateY(-7px) rotate(-45deg)" : "none",
+                }}
+              />
+            </div>
+          </button>
+        </div>
       </div>
+
+      {/* Dropdown nav (mobile) */}
+      {menuOpen && (
+        <nav className="border-t px-5 pb-4 pt-2 md:hidden" style={{ borderColor: "var(--hairline)" }}>
+          {NAV_LINKS.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              onClick={() => setMenuOpen(false)}
+              className="block rounded-[12px] px-4 py-3 text-[15px] font-extrabold"
+              style={{ color: "#fff" }}
+            >
+              {l.label}
+            </Link>
+          ))}
+        </nav>
+      )}
     </header>
   );
 }
