@@ -172,7 +172,7 @@ function HoodConnectButton() {
                     className={pill}
                     style={{ background: "var(--lime)", color: "var(--ink)" }}
                   >
-                    Connect wallet
+                    Sign in
                   </button>
                 );
               }
