@@ -11,34 +11,6 @@ interface IJuiceToken {
     function mint(address to, uint256 amount) external;
 }
 
-/**
- * @title JuiceStaking
- * @notice Lock a Boy for a fixed term and earn $JUICE continuously, boosted by
- *         both the Boy's rarity and the lock length. The Boy can't be withdrawn
- *         until the term ends; rewards can be claimed anytime during the term.
- *
- * DURATIONS ARE EDITABLE. A lock tier is just a number of days with a reward
- * multiplier, held in storage — the owner can add, retune or remove tiers with
- * `setDuration(days, bps)` and never needs to redeploy. Seeded at launch with
- * 1 / 3 / 6 / 12 months at 0.5x / 1x / 1.5x / 2.5x.
- *
- * REWARD RATE, snapshotted at stake time:
- *
- *     dailyRate = baseDailyReward
- *               * rarityMultiplierBps[rarity]        / 10_000
- *               * durationMultiplierBps[durationDays] / 10_000
- *
- * The rate is locked in when you stake, so later owner changes to
- * baseDailyReward or any multiplier only affect stakes made after them.
- *
- * ACCRUAL is continuous but bounded by the term: rewards accrue second by
- * second from `lastClaimAt` and stop at the unlock time. Leaving a Boy staked
- * past unlock earns nothing extra — unstake it or stake it again.
- *
- * Custody is custodial; there is no early exit.
- *
- * ⚠️ UNAUDITED. Holds user NFTs.
- */
 contract JuiceStaking is IERC721Receiver, ReentrancyGuard, Ownable, Pausable {
     /* ─────────────────────────────── Types ─────────────────────────────── */
 
