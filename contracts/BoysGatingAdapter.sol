@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-/**
- * @title BoysGatingAdapter
- * @notice A read-only ERC-721 *facade* over the Boys collection for Discord
- *         token-gating (Vulcan, Collab.Land, etc.).
- *
- * Staking moves a Boy out of the holder's wallet into JuiceStaking, so a plain
- * `balanceOf` on the real collection reads 0 for a staker and the gating bot
- * revokes their role. This contract presents as a normal ERC-721 — it answers
- * `supportsInterface`, `name`, `symbol`, `tokenURI`, `totalSupply` and
- * `ownerOf` so gating tools accept it as a collection — but its `balanceOf`
- * (and `ownerOf`) count a wallet's **held + staked** Boys. Point the gating
- * rule at this address and stakers keep their role.
- *
- * It is non-custodial and stateless: it holds nothing, can transfer nothing,
- * and only reads the two live contracts. Nothing here can affect staking or
- * funds. There is deliberately no transfer/approve surface — this is a
- * read-only view, not a tradeable token.
- */
 interface IBoys {
     function balanceOf(address owner) external view returns (uint256);
     function ownerOf(uint256 tokenId) external view returns (address);
