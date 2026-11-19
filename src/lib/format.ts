@@ -1,12 +1,6 @@
 import { CURRENCY_DECIMALS, CURRENCY_LABEL, type Currency } from "@/types/lending";
 
-/**
- * Amounts are always base units of their own currency. Every helper here
- * takes the currency explicitly — there is no default, because defaulting to
- * one would silently mis-scale the other by twelve orders of magnitude.
- */
 
-/** 1_500_000n USDG -> "1.50". 100000000000000000n ETH -> "0.1". */
 export function formatAmount(
   base: bigint,
   currency: Currency,
