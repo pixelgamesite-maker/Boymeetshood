@@ -4,26 +4,6 @@ pragma solidity ^0.8.24;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-/**
- * @title JuiceToken ($JUICE)
- * @notice The reward token earned by staking Boys in JuiceStaking.
- *
- * $JUICE has no price target today — it's a gamified, ecosystem-only token.
- * It is a normal, transferable ERC-20 (not a soulbound/non-transferable
- * variant) for one reason: BoyMeetsHood's main token doesn't exist yet, and
- * when it launches, holders are meant to be able to convert $JUICE into it
- * at a fixed ratio. That conversion contract isn't built yet, but a
- * transferable balance is what makes it possible later — a non-transferable
- * balance would have to be redesigned from scratch to support it.
- *
- * Minting is restricted to "authorized minters" — in practice just
- * JuiceStaking — rather than being owner-mintable directly, so the owner
- * key can't inflate the supply without going through the staking contract's
- * own reward rules. A future conversion/redemption contract can be added as
- * an authorized *burner* path (via `burn`) without any changes here.
- *
- * ⚠️ UNAUDITED.
- */
 contract JuiceToken is ERC20, Ownable {
     /* ────────────────────────────── State ────────────────────────────── */
 
