@@ -5,24 +5,31 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 /**
  * @title StakedBoysReceipt (sBOYS)
- * @notice A soulbound ERC-721 that mirrors staked Boys 1:1 for Discord
- *         token-gating (Vulcan, Collab.Land, etc.).
+ * @notice A soulbound ERC-721 that mirrors effective Boys ownership 1:1 for
+ *         Discord token-gating (Vulcan, Collab.Land, etc.), counting BOTH
+ *         in-wallet and staked Boys so that count-tiered roles work on a
+ *         holder's true total.
  *
- * Staking moves a Boy out of the holder's wallet into JuiceStaking, so a gating
- * bot that indexes on-chain holders sees the staker holding nothing and revokes
- * their role. Unlike a read-only `balanceOf` shim, this contract emits REAL
- * mint/transfer events: when a Boy is staked, a matching sBOYS token (same id)
- * is minted to the staker; when it's unstaked, the sBOYS is burned. Indexers
- * therefore see the staker as a genuine holder of this collection.
+ * A gating bot that indexes on-chain holders can't see staked Boys (they sit in
+ * JuiceStaking, not the holder's wallet) and can't sum a wallet's held + staked
+ * balance across two separate collections. This contract solves both: for each
+ * Boy it mints a matching receipt (same id) to that Boy's EFFECTIVE owner — the
+ * staker if it's staked, otherwise the current wallet owner — and emits the real
+ * mint/transfer events an indexer relies on. One gating rule on this collection
+ * therefore counts a wallet's held + staked Boys together.
  *
- * The staking contract is the single source of truth. `sync` only ever mints a
- * token to the wallet that actually staked it, and only ever burns one that is
- * no longer staked — so it cannot be gamed and anyone may call it. Tokens are
- * soulbound (non-transferable) so a receipt can't be handed to a non-staker.
+ * The real collection and JuiceStaking are the single source of truth. `sync`
+ * only ever points a receipt at the address that actually controls the Boy, so
+ * it cannot be gamed and anyone may call it. Because in-wallet Boys change hands
+ * via ordinary trades (outside this contract), a keeper should re-run `sync`
+ * periodically to keep the mirror current; steady-state syncs are near-free
+ * (reads only) and mint/burn just the ids that changed.
  *
- * It is non-custodial: it holds nothing and can move no real asset.
+ * Receipts are soulbound (non-transferable) and the contract is non-custodial:
+ * it holds nothing and can move no real asset.
  */
 interface IBoys {
+    function ownerOf(uint256 tokenId) external view returns (address);
     function tokenURI(uint256 tokenId) external view returns (string memory);
 }
 
@@ -43,15 +50,15 @@ interface IJuiceStakingView {
 }
 
 contract StakedBoysReceipt is ERC721 {
-    /// @notice The Boys ERC-721 collection (for metadata passthrough).
+    /// @notice The Boys ERC-721 collection (source of truth for wallet holders).
     IBoys public immutable boys;
-    /// @notice The JuiceStaking contract — the source of truth for stakes.
+    /// @notice The JuiceStaking contract (source of truth for stakers).
     IJuiceStakingView public immutable staking;
 
     error Soulbound();
 
     constructor(address _boys, address _staking)
-        ERC721("BoyMeetsHood Staked", "sBOYS")
+        ERC721("BoyMeetsHood (held + staked)", "BOYS")
     {
         boys = IBoys(_boys);
         staking = IJuiceStakingView(_staking);
@@ -59,35 +66,33 @@ contract StakedBoysReceipt is ERC721 {
 
     /* ─────────────────────────── Reconcile ─────────────────────────────── */
 
-    /// @notice Bring the receipts for explicit token IDs in line with staking.
-    /// @dev Permissionless — reads JuiceStaking, so it can only tell the truth.
+    /// @notice Bring the receipts for explicit token IDs in line with the chain.
+    /// @dev Permissionless — reads the real collection + staking, so it can only
+    ///      tell the truth.
     function sync(uint256[] calldata tokenIds) external {
         for (uint256 i; i < tokenIds.length; ++i) _syncOne(tokenIds[i]);
     }
 
     /// @notice Reconcile a contiguous id range (inclusive). For one-off backfill
-    ///         or a keeper sweeping the collection.
+    ///         or a keeper sweeping the whole collection.
     function syncRange(uint256 fromId, uint256 toId) external {
         for (uint256 id = fromId; id <= toId; ++id) _syncOne(id);
     }
 
-    /// @notice Mint any of a wallet's currently-staked Boys that aren't yet
-    ///         represented (does not burn — use sync/syncRange for that).
-    function syncUser(address user) external {
-        uint256[] memory ids = staking.getUserStakes(user);
-        for (uint256 i; i < ids.length; ++i) _syncOne(ids[i]);
+    /// @notice The address that effectively controls a Boy: the staker if it's
+    ///         staked, otherwise the current wallet owner.
+    function effectiveOwner(uint256 tokenId) public view returns (address) {
+        StakeInfo memory s = staking.getStake(tokenId);
+        if (s.isStaked) return s.owner;
+        return boys.ownerOf(tokenId);
     }
 
     function _syncOne(uint256 tokenId) internal {
-        StakeInfo memory s = staking.getStake(tokenId);
+        address target = effectiveOwner(tokenId);
         address current = _ownerOf(tokenId); // address(0) if not minted
-        if (s.isStaked) {
-            if (current == s.owner) return; // already correct
-            if (current != address(0)) _burn(tokenId); // re-staked by someone else
-            _mint(s.owner, tokenId);
-        } else if (current != address(0)) {
-            _burn(tokenId); // no longer staked
-        }
+        if (current == target) return; // already correct
+        if (current != address(0)) _burn(tokenId);
+        _mint(target, tokenId);
     }
 
     /* ─────────────────────────── Views ─────────────────────────────────── */
