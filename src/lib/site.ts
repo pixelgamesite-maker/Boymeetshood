@@ -1,8 +1,3 @@
-/**
- * Everything about the collection that appears in more than one place.
- * Change a link, a fact or a card image here and it changes everywhere.
- */
-
 export const LINKS = {
   site: "https://boymeethood.fun",
   opensea: "https://opensea.io/collection/boymeetshood",
