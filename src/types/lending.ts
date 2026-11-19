@@ -1,10 +1,3 @@
-/**
- * Shapes returned by BoyMeetsHoodLending v3.
- * Amounts are bigint in the base units of their own currency — 6 decimals for
- * USDG, 18 for ETH — so always format with the loan's currency, never a
- * hardcoded one.
- */
-
 export type Address = `0x${string}`;
 
 /** Matches the contract's Currency enum: 0 = USDG, 1 = ETH. */
