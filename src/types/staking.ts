@@ -1,14 +1,3 @@
-/**
- * Shapes returned by JuiceStaking. Reward amounts are $JUICE base units
- * (18 decimals) — always format with formatJuice, not a raw bigint.
- *
- * A Boy is locked for a fixed term, chosen at stake time from the tiers the
- * contract currently offers (read live via getDurations). It earns
- * continuously at a rate snapshotted when staked
- * (baseDailyReward x rarity x duration), can't be withdrawn until the term
- * ends, and rewards can be claimed anytime during the term.
- */
-
 export type Address = `0x${string}`;
 
 export type Rarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic";
@@ -32,11 +21,6 @@ export const RARITY_ORDER: Rarity[] = [
   "Common",
 ];
 
-/**
- * A lock tier, read live from the contract: a length in days and its reward
- * multiplier in basis points (10000 = 1x). Tiers are editable on-chain, so
- * the UI never hardcodes them.
- */
 export interface DurationTier {
   days: number;
   bps: number;
