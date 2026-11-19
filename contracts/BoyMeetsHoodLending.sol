@@ -9,38 +9,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-/**
- * @title BoyMeetsHoodLending
- * @notice Peer-to-peer NFT-collateralised lending for a single ERC-721
- *         collection, denominated in either USDG or native ETH.
- *
- * Two ways in:
- *   REQUESTS — a holder escrows Boys and names what they want for them. Any
- *   wallet can fund it. The borrower needs no capital, only gas.
- *   OFFERS — a lender escrows funds and names what they'll lend against how
- *   many Boys. Any holder can take it.
- *
- * Currency is per-post. A loan denominated in ETH is repaid in ETH: borrow
- * 0.1 ETH, repay 0.1 ETH plus interest, whatever the dollar price does in
- * between. Nothing is converted and no oracle is consulted.
- *
- * Three safety choices worth knowing:
- *
- *   1. PULL PAYMENTS for everything owed to a lender or the treasury. USDG
- *      can freeze addresses and a contract can reject ETH; pushing would let
- *      either block a borrower's repayment and cost them their collateral.
- *
- *   2. PAY-OR-CREDIT for money going to a borrower. Their funds are sent
- *      directly, but if a native transfer fails the amount is credited
- *      instead of reverting — a lender funding a request must never have
- *      their transaction fail because of the borrower's wallet.
- *
- *   3. transferFrom, NOT safeTransferFrom, when releasing collateral. A
- *      lender may be a multisig with no onERC721Received; the receiver check
- *      is worth less than the guarantee that collateral can always leave.
- *
- * ⚠️ UNAUDITED. Holds user funds and user NFTs.
- */
 contract BoyMeetsHoodLending is
     IERC721Receiver,
     ReentrancyGuard,
