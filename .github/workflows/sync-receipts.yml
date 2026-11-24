@@ -1,0 +1,38 @@
+name: Sync sBOYS receipts
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes
+  workflow_dispatch: {}        # manual run button
+
+concurrency:
+  group: sync-receipts
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Restore keeper state (last processed block)
+        uses: actions/cache@v4
+        with:
+          path: scripts/keeper/.keeper-last-block
+          key: keeper-state-${{ github.run_id }}
+          restore-keys: |
+            keeper-state-
+      - name: Install deps
+        working-directory: scripts/keeper
+        run: npm install --no-audit --no-fund
+      - name: Reconcile receipts
+        working-directory: scripts/keeper
+        env:
+          RPC_URL: https://rpc.mainnet.chain.robinhood.com
+          RECEIPT_ADDRESS: "0xAc9CD0b9cD8318C6Adb91744B8D2e7f3cB2dF23A"
+          BOYS_ADDRESS: "0xB036c31a01d7D056f70f339a299111775613cbac"
+          KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
+          STATE_FILE: .keeper-last-block
+        run: node sync-receipts.mjs

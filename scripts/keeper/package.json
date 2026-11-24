@@ -1,0 +1,7 @@
+{
+  "name": "bmh-receipt-keeper",
+  "private": true,
+  "type": "module",
+  "description": "Keeps the sBOYS gating mirror in sync with held+staked Boys.",
+  "dependencies": { "viem": "^2.21.0" }
+}
